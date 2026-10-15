@@ -350,6 +350,25 @@ $('reminderNotifications').addEventListener('click',async()=>{
   toast(permission==='granted'?'Local reminder alerts enabled while ARKUS is open.':'Browser permission not granted; in-app reminders still work.');
 });
 $('dailyBriefing').addEventListener('click',showBriefing);
+$('generateCad').addEventListener('click',async()=>{
+  try{
+    const shape=$('cadShape').value;
+    const dims=shape==='box'
+      ?{length:$('cadLength').value,width:$('cadWidth').value,height:$('cadHeight').value}
+      :shape==='cylinder'
+      ?{radius:$('cadRadius').value,height:$('cadHeight').value}
+      :{radius:$('cadRadius').value,wall:$('cadWall').value,height:$('cadHeight').value};
+    const result=await api('/cad/primitive',{shape,dimensions:dims});
+    const raw=atob(result.base64);
+    const bytes=Uint8Array.from(raw,character=>character.charCodeAt(0));
+    const url=URL.createObjectURL(new Blob([bytes],{type:'model/stl'}));
+    const anchor=document.createElement('a');anchor.href=url;anchor.download=result.name;
+    document.body.append(anchor);anchor.click();anchor.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+    $('cadStatus').textContent=`${result.triangles} mesh triangles exported. Check dimensions and mechanical suitability independently.`;
+    toast(result.answer);
+  }catch(e){$('cadStatus').textContent=e.message;toast(e.message);}
+});
 $('swapModel').addEventListener('click',()=>swapModel());$('verifyModels').addEventListener('click',async()=>{try{const result=await api('/models/verify',{name:$('models').value});toast(result.answer || result.message || 'Selected model verified.');await loadModels();}catch(e){toast(e.message);}});
 $('focusStart').addEventListener('click',()=>focusAction('start'));document.querySelectorAll('[data-focus]').forEach(button=>button.addEventListener('click',()=>focusAction(button.dataset.focus)));$('diagnostics').addEventListener('click',diagnostics);
 $('shareScreen').addEventListener('click',startScreen);$('stopScreen').addEventListener('click',stopScreen);$('askScreen').addEventListener('click',()=>see('screen'));$('watch').addEventListener('change',startWatch);$('watchCloud').addEventListener('change',()=>{if($('watchCloud').checked)toast('Cloud nudges enabled for the current share. Fresh screen frames may incur API charges.');});$('startCamera').addEventListener('click',startCamera);$('stopCamera').addEventListener('click',stopCamera);$('askCamera').addEventListener('click',()=>see('camera'));
