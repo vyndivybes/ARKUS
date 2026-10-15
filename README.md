@@ -38,6 +38,26 @@ Inspired by ADA V2's project-memory concept, ARKUS now offers **local isolated p
 
 **ADA reference and limits:** [nazirlouis/ada_v2](https://github.com/nazirlouis/ada_v2) is MIT-licensed (© 2025 Nazir Louis). We reimplemented its local project-memory idea rather than copying its code. ADA additionally describes Gemini native audio, CAD generation, printer/IoT control, Playwright browsing, gesture control and face matching. ARKUS v0.2.0 **does not claim** these integrations: real-time native duplex voice needs hardware/provider acceptance; CAD and printing require separate tools and device testing; unrestricted browser automation and automatic safety acknowledgement were intentionally not imported; weak heuristic face matching is not treated as authentication. ARKUS's existing galaxy, focus, local posture, typed chat and opt-in vision remain.
 
+## Local companion workflows (v0.3.0)
+
+ARKUS provides an opt-in, **offline action-plan and reminder engine** for practical personal assistance. Open System controls → **Local action plans** or **Personal reminders**.
+
+- **O.L.L.I.E-inspired sequenced planning:** enter a goal and 1–12 *user-specified* steps. Only one step is exposed at a time; mark a step finished only after explicit confirmation. ARKUS never drives motors, printers or your computer as part of these steps.
+- **Brahma-inspired daily organization:** create local reminders with an exact local date and time. Use **Local daily briefing** for project notes, active/completed plans, due reminders and next-24-hour local reminders. It will state plainly that external calendar, email, weather and news are **not connected**.
+- **ADA-inspired continuity:** plans and reminders remain isolated with each project and persist across ARKUS restarts. Stored in `%APPDATA%\\arkus\\projects\\<id>\\companion.json` on desktop, not encrypted. Back up these files before reinstalling or resetting Windows.
+- Reminders are **in-app only**: ARKUS must be open and its running server reachable; overdue reminders are surfaced after reopening. Browser notifications require a separate click and browser permission. ARKUS does not install Windows scheduled tasks or operate while closed.
+- Commands: `Create a plan for Quality Review: Check CAD; Record defects; Summarize results`; `Remind me on 2026-12-01 09:30 to check the proposal`; `Daily briefing`; `What can you do?` The structured UI accepts normal line-by-line steps and a date/time picker.
+- **Basic offline CAD:** System controls → Local 3D mesh workshop exports binary STL boxes, cylinders and hollow tubes with bounded dimensions in millimetres, without a key, web access, build123d or hardware. These are basic triangle meshes, **not** engineering-validated models, editable parametric CAD, slicer jobs or robot/3D-printer instructions.
+- **Capability inventory** labels each feature available, requiring hardware/provider qualification, or not implemented. Feature listing is not evidence of device functionality.
+
+### Reference-source and permission boundaries
+
+- [ADA V2](https://github.com/nazirlouis/ada_v2): MIT licensed; project memory already adapted in ARKUS v0.2. Additional components require optional CAD/3D-print, Kasa, Playwright, Gemini native-audio or MediaPipe hand infrastructure. They are **not** claimed implemented here.
+- [O.L.L.I.E](https://github.com/nazirlouis/O.L.L.I.E): hardware-specific robot-arm research project involving CAN motors, RealSense camera, hand-eye calibration, IK and simulation. Its single-next-action concept inspired independently written plans; **no physical robot integration or O.L.L.I.E code** has been copied. No LICENSE file was present in the inspected repository.
+- [Brahma AI Evo](https://github.com/titechprabhasolutions/Brahma-Ai-Evo): source-available, personal-use and **non-redistribution** license. ARKUS does not include or derive distributable Brahma source. Local reminders and truthfully bounded briefings are new implementations of common assistant concepts, not ports of Brahma code. Automatic unsafe shell/browser actions and autonomous code patching are **not enabled**.
+
+The preview remains unsigned and free for its local base features. Third-party cloud AI, native voice, CAD, smart-home and hardware capabilities are not supplied free by ARKUS. No integration claims should be made without real testing and explicit hardware/provider setup.
+
 ## Configure a model privately
 
 Copy `config.example.json` to `config.json` for browser mode, or `%APPDATA%\arkus\config.json` for desktop mode. Both files stay outside the served viewer. Desktop also honors `ARKUS_CONFIG` for another private path. Restart after changing configuration.

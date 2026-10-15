@@ -98,13 +98,99 @@ async function activateProject(path,payload){
   if(sceneView)sceneView.positions=new Map();
   await refreshGraph(result.graph);
   await loadProjects(result.projects);
+  await refreshWorkflows(false);
   restoreConversation(result.history);
   $('search').value='';renderNotes();
   toast('Workspace active: '+$('activeProject').selectedOptions[0]?.textContent);
   status('Project memory ready');
   return result;
 }
+
+const announcedDue=new Set();
+async function refreshWorkflows(announce=true){
+  try{
+    const state=await api('/workflow/state');
+    if(state.project!==document.body.dataset.project)return;
+    const plans=$('workflowPlans');plans.replaceChildren();
+    if(!state.plans.length)plans.textContent='No action plans in this project.';
+    for(const plan of state.plans.slice(-15).reverse()){
+      const card=document.createElement('div');card.className='workflow-card';
+      const title=document.createElement('strong');title.textContent=plan.goal;
+      const count=plan.steps.filter(step=>step.done).length;
+      const meta=document.createElement('p');meta.textContent=`${count}/${plan.steps.length} steps · ${plan.completed?'finished':'in progress'}`;
+      card.append(title,meta);
+      const next=plan.steps.find(step=>!step.done);
+      if(next){
+        const row=document.createElement('div');row.className='workflow-step';
+        const label=document.createElement('span');label.textContent=next.text;
+        const done=document.createElement('button');done.type='button';done.textContent='Confirm done';
+        done.addEventListener('click',async()=>{
+          if(!window.confirm('Confirm you personally completed: '+next.text+'?'))return;
+          try{const result=await api('/workflow/advance',{id:plan.id,confirmed:true});
+            toast(result.answer);await refreshWorkflows(false);
+          }catch(e){toast(e.message);}
+        });row.append(label,done);card.append(row);
+      }
+      plans.append(card);
+    }
+    const reminders=$('workflowReminders');reminders.replaceChildren();
+    const pending=state.reminders.filter(r=>!r.acknowledged).slice(-12).sort((a,b)=>a.when.localeCompare(b.when));
+    if(!pending.length)reminders.textContent='No pending reminders.';
+    for(const reminder of pending){
+      const item=document.createElement('div');item.className='workflow-card';
+      const line=document.createElement('span');line.textContent=`${reminder.when.replace('T',' ')} · ${reminder.message}`;
+      const button=document.createElement('button');button.type='button';button.textContent='Acknowledge';
+      button.addEventListener('click',async()=>{
+        try{await api('/workflow/acknowledge',{id:reminder.id});await refreshWorkflows(false);}
+        catch(e){toast(e.message);}
+      });item.append(line,button);reminders.append(item);
+    }
+    if(announce){
+      for(const due of state.due){
+        const fingerprint=state.project+':'+due.id;
+        if(announcedDue.has(fingerprint))continue;
+        announcedDue.add(fingerprint);
+        const alertText='Reminder: '+due.message;
+        toast(alertText);speak(alertText);
+        if('Notification' in window && Notification.permission==='granted'){
+          try{new Notification('ARKUS project reminder',{body:due.message,tag:'arkus-'+due.id});}catch{/* Notification is optional. */}
+        }
+      }
+    }
+  }catch(e){$('workflowPlans').textContent='Local workflows unavailable: '+e.message;}
+}
+async function showBriefing(){
+  try{const b=await api('/workflow/briefing');addMessage(b.answer,'assistant');speak(b.answer);
+  }catch(e){toast(e.message);}
+}
+async function loadCapabilities(){
+  try{const data=await api('/workflow/capabilities');const box=$('capabilityList');box.replaceChildren();
+    for(const skill of data.capabilities || []){
+      const line=document.createElement('div');line.className='capability-item';
+      const name=document.createElement('strong');name.textContent=skill.name;
+      const status=document.createElement('small');status.textContent=skill.status.replaceAll('_',' ');
+      line.append(name,status);box.append(line);
+    }
+  }catch(e){$('capabilityList').textContent=e.message;}
+}
 async function command(text){
+  if(/^(?:my |the )?(?:daily |morning )?briefing[.!]?$/i.test(text) ||
+     /^(?:give me |show me |what is )(?:my |the )?(?:daily |morning )?briefing[.!]?$/i.test(text)){
+    await showBriefing();return true;
+  }
+  if(/^(?:what can you do|show (?:me )?(?:your )?capabilities)[.!]?$/i.test(text)){
+    const data=await api('/workflow/capabilities');
+    const active=(data.capabilities||[]).filter(x=>x.status==='available').map(x=>x.name);
+    const answer='Available locally: '+active.join(', ')+'. Other integrations remain optional or unavailable.';
+    addMessage(answer);speak(answer);return true;
+  }
+  const reminder=text.match(/^remind me (?:on |at )?(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}) (?:to|about) (.+)$/i);
+  if(reminder){const result=await api('/workflow/reminder',{when:reminder[1]+'T'+reminder[2],message:reminder[3]});
+    toast(result.answer);speak(result.answer);await refreshWorkflows(false);return true;}
+  const planRequest=text.match(/^(?:create|make) (?:a )?plan for ([^:]+): (.+)$/i);
+  if(planRequest){const steps=planRequest[2].split(';').map(x=>x.trim()).filter(Boolean);
+    const result=await api('/workflow/plan',{goal:planRequest[1].trim(),steps});
+    toast(result.answer);speak(result.answer);await refreshWorkflows(false);return true;}
   const createProject=text.match(/^create (?:a )?(?:new )?project (?:called|named) (.+?)[.!]?$/i);
   if(createProject){await activateProject('/projects/create',{name:createProject[1].trim()});return true;}
   const switchProject=text.match(/^(?:switch (?:to )?project(?: to)?|open project) (.+?)[.!]?$/i);
@@ -245,13 +331,53 @@ $('clearProjectChat').addEventListener('click',async()=>{
   if(!window.confirm('Clear stored conversation in this project? Notes will not be changed.'))return;
   try{await api('/history/clear',{});restoreConversation([]);toast('Only this project conversation was cleared.');}catch(e){toast(e.message);}
 });
+
+$('createWorkflowPlan').addEventListener('click',async()=>{
+  const goal=$('workflowGoal').value.trim();
+  const steps=$('workflowSteps').value.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+  try{const result=await api('/workflow/plan',{goal,steps});$('workflowGoal').value='';$('workflowSteps').value='';
+    toast(result.answer);await refreshWorkflows(false);}
+  catch(e){toast(e.message);}
+});
+$('createReminder').addEventListener('click',async()=>{
+  try{const result=await api('/workflow/reminder',{when:$('reminderWhen').value,message:$('reminderMessage').value});
+    $('reminderMessage').value='';toast(result.answer);await refreshWorkflows(false);}
+  catch(e){toast(e.message);}
+});
+$('reminderNotifications').addEventListener('click',async()=>{
+  if(!('Notification' in window)){toast('Native browser notifications unavailable. In-app reminders still work.');return;}
+  const permission=await Notification.requestPermission();
+  toast(permission==='granted'?'Local reminder alerts enabled while ARKUS is open.':'Browser permission not granted; in-app reminders still work.');
+});
+$('dailyBriefing').addEventListener('click',showBriefing);
+$('generateCad').addEventListener('click',async()=>{
+  try{
+    const shape=$('cadShape').value;
+    const dims=shape==='box'
+      ?{length:$('cadLength').value,width:$('cadWidth').value,height:$('cadHeight').value}
+      :shape==='cylinder'
+      ?{radius:$('cadRadius').value,height:$('cadHeight').value}
+      :{radius:$('cadRadius').value,wall:$('cadWall').value,height:$('cadHeight').value};
+    const result=await api('/cad/primitive',{shape,dimensions:dims});
+    const raw=atob(result.base64);
+    const bytes=Uint8Array.from(raw,character=>character.charCodeAt(0));
+    const url=URL.createObjectURL(new Blob([bytes],{type:'model/stl'}));
+    const anchor=document.createElement('a');anchor.href=url;anchor.download=result.name;
+    document.body.append(anchor);anchor.click();anchor.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+    $('cadStatus').textContent=`${result.triangles} mesh triangles exported. Check dimensions and mechanical suitability independently.`;
+    toast(result.answer);
+  }catch(e){$('cadStatus').textContent=e.message;toast(e.message);}
+});
 $('swapModel').addEventListener('click',()=>swapModel());$('verifyModels').addEventListener('click',async()=>{try{const result=await api('/models/verify',{name:$('models').value});toast(result.answer || result.message || 'Selected model verified.');await loadModels();}catch(e){toast(e.message);}});
 $('focusStart').addEventListener('click',()=>focusAction('start'));document.querySelectorAll('[data-focus]').forEach(button=>button.addEventListener('click',()=>focusAction(button.dataset.focus)));$('diagnostics').addEventListener('click',diagnostics);
 $('shareScreen').addEventListener('click',startScreen);$('stopScreen').addEventListener('click',stopScreen);$('askScreen').addEventListener('click',()=>see('screen'));$('watch').addEventListener('change',startWatch);$('watchCloud').addEventListener('change',()=>{if($('watchCloud').checked)toast('Cloud nudges enabled for the current share. Fresh screen frames may incur API charges.');});$('startCamera').addEventListener('click',startCamera);$('stopCamera').addEventListener('click',stopCamera);$('askCamera').addEventListener('click',()=>see('camera'));
 $('postureConsent').addEventListener('change',enablePosture);$('calibratePosture').addEventListener('click',()=>{try{const result=postureController?.calibrate();if(!result)throw new Error('Enable posture awareness first.');$('postureStatus').textContent=`Calibrated locally. ${result.torsoVisible?'Head and torso heuristics enabled.':'Head heuristic enabled; hips are not confidently visible, so torso detection stays off.'}`;}catch(error){toast(error.message);}});
 addEventListener('pagehide',()=>{stopScreen();stopCamera();stopListening();stopSpeech();});
 setupSpeech();
-await Promise.allSettled([refreshGraph(),loadModels(),refreshFocus(),diagnostics(),loadProjects()]);
+
+await Promise.allSettled([refreshGraph(),loadModels(),refreshFocus(),diagnostics(),loadProjects(),loadCapabilities()]);
+await refreshWorkflows(false);
 try{const history=await api('/projects/history');restoreConversation(history.messages || []);}catch(e){toast('Project history unavailable: '+e.message);}
 const hour=new Date().getHours();$('greeting').textContent=`Good ${hour<12?'morning':hour<17?'afternoon':'evening'}, sir. ${graph.nodes.length} notes indexed, all present and accounted for. What shall we explore?`;
-await createGalaxy();setInterval(refreshFocus,1000);if(params.has('focusprobe'))runProbe();
+await createGalaxy();setInterval(refreshFocus,1000);setInterval(()=>refreshWorkflows(true),30000);if(params.has('focusprobe'))runProbe();

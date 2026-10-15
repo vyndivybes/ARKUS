@@ -1,6 +1,6 @@
 {
   "name": "arkus",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Local-first Windows knowledge galaxy and focus companion",
   "main": "desktop/main.cjs",
@@ -35,6 +35,8 @@
       "viewer/**",
       "server.py",
       "projects.py",
+      "companion.py",
+      "cad_shapes.py",
       "focus.py",
       "build.py",
       "preflight.py",
