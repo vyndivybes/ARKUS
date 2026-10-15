@@ -76,7 +76,7 @@ function restoreConversation(history=[]){
   const who=document.createElement('span');who.className='who';who.textContent='ARKUS';
   const p=document.createElement('p');p.id='greeting';p.textContent='Project memory ready. What shall we explore?';
   initial.append(who,p);root.append(initial);
-  for(const entry of history){
+  for(const entry of history.slice(-26)){
     if(entry && ['user','assistant'].includes(entry.role) && typeof entry.content==='string'){
       addMessage(entry.content,entry.role);
     }
