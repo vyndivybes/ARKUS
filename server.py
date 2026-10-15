@@ -22,6 +22,7 @@ from pathlib import Path
 from build import index_notes, public_graph, retrieve, seed
 from focus import Focus
 from projects import ProjectError, ProjectStore
+from companion import CAPABILITIES, CompanionWorkflows, WorkflowError
 
 # PERSONA: edit this single block to change ARKUS's character.
 PERSONA = """You are ARKUS, a dry, impeccably polite British butler. Occasionally say sir.
@@ -61,6 +62,7 @@ class App:
         self.default_notes = Path(notes_dir or os.environ.get('ARKUS_NOTES_DIR', self.data / 'notes')).resolve()
         self.default_notes.mkdir(parents=True, exist_ok=True)
         self.projects = ProjectStore(self.data, self.default_notes)
+        self.companion = CompanionWorkflows(self.data)
         self.notes = self.projects.notes_path()
         self.notes.mkdir(parents=True, exist_ok=True)
         self.config_path = Path(os.environ.get('ARKUS_CONFIG', ROOT / 'config.json')).resolve()
@@ -114,6 +116,50 @@ class App:
                 raise UserError(str(exc), 409) from None
             self.history.clear()
             return {'ok': True}
+
+    def workflows_state(self):
+        with self.lock:
+            return self.companion.snapshot(self.projects.active)
+
+    def workflows_briefing(self):
+        with self.lock:
+            summary = self.companion.snapshot(self.projects.active)["briefing"]
+            summary["note_count"] = len(self.graph["nodes"])
+            summary["answer"] = (
+                f"Local project briefing: {summary['note_count']} indexed notes, "
+                f"{summary['active_plans']} active plans and "
+                f"{summary['due_reminders']} due reminders. "
+                "External calendars, email, news and weather are not connected."
+            )
+            return summary
+
+    def create_workflow_plan(self, goal, steps):
+        with self.lock:
+            try:
+                return self.companion.create_plan(self.projects.active, goal, steps)
+            except WorkflowError as exc:
+                raise UserError(str(exc), 409) from None
+
+    def advance_workflow_plan(self, plan_id, confirmed):
+        with self.lock:
+            try:
+                return self.companion.advance(self.projects.active, plan_id, confirmed)
+            except WorkflowError as exc:
+                raise UserError(str(exc), 409) from None
+
+    def create_workflow_reminder(self, when, message):
+        with self.lock:
+            try:
+                return self.companion.remind(self.projects.active, when, message)
+            except WorkflowError as exc:
+                raise UserError(str(exc), 409) from None
+
+    def acknowledge_workflow_reminder(self, reminder_id):
+        with self.lock:
+            try:
+                return self.companion.acknowledge(self.projects.active, reminder_id)
+            except WorkflowError as exc:
+                raise UserError(str(exc), 409) from None
 
     def status(self):
         return dict(project=self.projects.active, provider=self.provider, model=self.model, watch_active=time.monotonic() < self.watch_until, configured=self.provider == 'offline' or bool(self.key) or self.provider == 'ollama',
@@ -359,6 +405,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, self.app.projects.state())
             if path == '/projects/history':
                 return self.send(200, {'messages': self.app.projects.read_history()})
+            if path == '/workflow/state':
+                return self.send(200, self.app.workflows_state())
+            if path == '/workflow/briefing':
+                return self.send(200, self.app.workflows_briefing())
+            if path == '/workflow/capabilities':
+                return self.send(200, {'capabilities': CAPABILITIES})
             if path == '/models':
                 return self.send(200, self.app.models())
             if path == '/focus/state':
@@ -433,6 +485,14 @@ class Handler(BaseHTTPRequestHandler):
                 result = {'ok': True}
             elif path.startswith('/focus/'):
                 result = self.app.focus.command(path.split('/')[-1], body)
+            elif path == '/workflow/plan':
+                result = self.app.create_workflow_plan(body.get('goal'), body.get('steps'))
+            elif path == '/workflow/advance':
+                result = self.app.advance_workflow_plan(body.get('id'), body.get('confirmed'))
+            elif path == '/workflow/reminder':
+                result = self.app.create_workflow_reminder(body.get('when'), body.get('message'))
+            elif path == '/workflow/acknowledge':
+                result = self.app.acknowledge_workflow_reminder(body.get('id'))
             elif path == '/projects/create':
                 result = self.app.create_project(body.get('name'))
             elif path == '/projects/switch':
