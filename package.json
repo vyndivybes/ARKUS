@@ -36,6 +36,7 @@
       "server.py",
       "projects.py",
       "companion.py",
+      "cad_shapes.py",
       "focus.py",
       "build.py",
       "preflight.py",
