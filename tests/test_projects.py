@@ -18,20 +18,20 @@ class ProjectStoreTests(unittest.TestCase):
         self.tmp.cleanup()
 
     def test_new_project_default_and_persistence(self):
-        store = ProjectStore(self.root, self.root / "legacy-notes")
+        store = ProjectStore(self.root, (self.root / "legacy-notes").resolve())
         self.assertEqual(store.active, "general")
-        self.assertEqual(store.notes_path(), self.root / "legacy-notes")
+        self.assertEqual(store.notes_path(), (self.root / "legacy-notes").resolve())
         result = store.create("Carbon Bicycle")
         self.assertEqual(result["active"], "carbon-bicycle")
-        self.assertEqual(store.notes_path(), self.root / "projects" / "carbon-bicycle" / "notes")
-        store2 = ProjectStore(self.root, self.root / "legacy-notes")
+        self.assertEqual(store.notes_path(), (self.root / "projects" / "carbon-bicycle" / "notes").resolve())
+        store2 = ProjectStore(self.root, (self.root / "legacy-notes").resolve())
         self.assertEqual(store2.active, "carbon-bicycle")
         self.assertEqual(len(store2.state()["projects"]), 2)
         store2.switch("general")
-        self.assertEqual(store2.notes_path(), self.root / "legacy-notes")
+        self.assertEqual(store2.notes_path(), (self.root / "legacy-notes").resolve())
 
     def test_names_are_validated_and_duplicate_project_refused(self):
-        store = ProjectStore(self.root, self.root / "legacy-notes")
+        store = ProjectStore(self.root, (self.root / "legacy-notes").resolve())
         for value in ("", " ", "../outside", "a/b", "x\\y", ".", "a" * 60):
             with self.subTest(name=value), self.assertRaises(ProjectError):
                 store.create(value)
@@ -43,7 +43,7 @@ class ProjectStoreTests(unittest.TestCase):
         self.assertFalse((self.root.parent / "outside").exists())
 
     def test_symlinked_notes_folder_is_refused(self):
-        store = ProjectStore(self.root, self.root / "legacy-notes")
+        store = ProjectStore(self.root, (self.root / "legacy-notes").resolve())
         store.create("Safe")
         folder = store.notes_path()
         folder.rmdir()
@@ -57,7 +57,7 @@ class ProjectStoreTests(unittest.TestCase):
             store.notes_path()
 
     def test_chat_history_only_in_its_project_and_bounded(self):
-        store = ProjectStore(self.root, self.root / "legacy-notes")
+        store = ProjectStore(self.root, (self.root / "legacy-notes").resolve())
         store.append_history([{"role": "user", "content": "General only"}])
         store.create("Design")
         self.assertEqual(store.read_history(), [])
