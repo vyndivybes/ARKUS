@@ -1,0 +1,8 @@
+{
+  "provider": "offline",
+  "model": "offline",
+  "api_key": "",
+  "allow_paid_models": false,
+  "aliases": {},
+  "verified_models": []
+}

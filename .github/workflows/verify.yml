@@ -1,0 +1,31 @@
+name: Verify ARKUS
+on: [push, pull_request, workflow_dispatch]
+jobs:
+  verify:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --no-fund
+      - run: npm test
+      - run: npm audit --audit-level=moderate
+      - run: node --check viewer/app.js
+      - run: node --check desktop/main.cjs
+      - name: Start server and run live local preflight
+        shell: pwsh
+        run: |
+          $server = Start-Process python -ArgumentList 'server.py' -WindowStyle Hidden -PassThru
+          try {
+            for ($attempt = 0; $attempt -lt 30; $attempt++) {
+              try { Invoke-WebRequest http://127.0.0.1:4700/api/status | Out-Null; break } catch { Start-Sleep -Seconds 1 }
+            }
+            python preflight.py
+            if ($LASTEXITCODE -ne 0) { throw 'Preflight failed' }
+          } finally { Stop-Process -Id $server.Id -ErrorAction SilentlyContinue }
+      - run: npm run pack

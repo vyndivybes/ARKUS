@@ -1,0 +1,12 @@
+config.json
+.env*
+!.env.example
+data/
+node_modules/
+dist/
+__pycache__/
+*.pyc
+*.log
+work/
+test-results/
+viewer/vendor/

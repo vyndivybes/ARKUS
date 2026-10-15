@@ -11,7 +11,7 @@ npm ci
 python server.py
 ```
 
-Open http://127.0.0.1:4700. For the Windows application, run `npm run desktop`. `npm run dist` builds a portable Windows executable. This version still requires Python installed on the destination machine; set `ARKUS_PYTHON` to its executable if it is outside PATH. The portable build is unsigned.
+Open http://127.0.0.1:4700. For the Windows application from source, run `npm run desktop`. `npm run dist` builds a portable Windows executable with its own checksum-verified Python runtime, galaxy assets, and posture model. The packaged application needs no Node/Python installation. Building it needs internet to fetch pinned dependencies and the official embedded Python archive. The portable build is unsigned.
 
 The first run creates 30 clearly marked fictional business notes. Replace them with your own, or start with `python server.py --notes "C:\path\to\notes"`. The server reads markdown only. Captures write into that folder's `captures` directory. Browser mode stores notes in ignored `data/`; desktop mode uses `%APPDATA%\arkus`. Back up your notes before moving them. Notes are ordinary unencrypted markdown protected by your Windows account permissions.
 
