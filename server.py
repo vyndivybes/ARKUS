@@ -23,6 +23,7 @@ from build import index_notes, public_graph, retrieve, seed
 from focus import Focus
 from projects import ProjectError, ProjectStore
 from companion import CAPABILITIES, CompanionWorkflows, WorkflowError
+from cad_shapes import GeometryError, generate as generate_stl
 
 # PERSONA: edit this single block to change ARKUS's character.
 PERSONA = """You are ARKUS, a dry, impeccably polite British butler. Occasionally say sir.
@@ -116,6 +117,12 @@ class App:
                 raise UserError(str(exc), 409) from None
             self.history.clear()
             return {'ok': True}
+
+    def generate_offline_cad(self, shape, dimensions):
+        try:
+            return generate_stl(shape, dimensions)
+        except GeometryError as exc:
+            raise UserError(str(exc), 409) from None
 
     def workflows_state(self):
         with self.lock:
@@ -485,6 +492,8 @@ class Handler(BaseHTTPRequestHandler):
                 result = {'ok': True}
             elif path.startswith('/focus/'):
                 result = self.app.focus.command(path.split('/')[-1], body)
+            elif path == '/cad/primitive':
+                result = self.app.generate_offline_cad(body.get('shape'), body.get('dimensions'))
             elif path == '/workflow/plan':
                 result = self.app.create_workflow_plan(body.get('goal'), body.get('steps'))
             elif path == '/workflow/advance':
