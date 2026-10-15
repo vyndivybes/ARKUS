@@ -1,0 +1,54 @@
+{
+  "name": "arkus",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local-first Windows knowledge galaxy and focus companion",
+  "main": "desktop/main.cjs",
+  "author": "ARKUS contributors",
+  "license": "UNLICENSED",
+  "scripts": {
+    "postinstall": "node scripts/vendor.cjs",
+    "prepack": "node scripts/build-prepare.cjs",
+    "predist": "node scripts/build-prepare.cjs",
+    "start": "python server.py",
+    "desktop": "electron .",
+    "test": "python -m unittest discover -s tests -v && node --test viewer/posture.test.mjs",
+    "preflight": "python preflight.py",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder --win portable"
+  },
+  "dependencies": {
+    "@mediapipe/tasks-vision": "1.1.1",
+    "three": "0.186.1"
+  },
+  "devDependencies": {
+    "electron": "44.7.2",
+    "electron-builder": "26.15.3"
+  },
+  "build": {
+    "appId": "com.arkus.desktop",
+    "productName": "ARKUS",
+    "asar": false,
+    "extraResources": [{"from":"work/python-runtime","to":"python","filter":["**/*"]}],
+    "files": [
+      "desktop/**",
+      "viewer/**",
+      "server.py",
+      "focus.py",
+      "build.py",
+      "preflight.py",
+      "config.example.json",
+      "package.json",
+      "node_modules/three/**"
+    ],
+    "win": {
+      "target": "portable"
+    },
+    "directories": {
+      "output": "dist"
+    }
+  },
+  "overrides": {
+    "global-agent": "4.1.3"
+  }
+}

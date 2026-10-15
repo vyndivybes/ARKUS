@@ -1,0 +1,21 @@
+# Windows desktop shell
+
+Run `npm run desktop` after installing dependencies and Python 3.11 or newer. `ARKUS_PYTHON` can select an absolute Python executable. `ARKUS_PORT` overrides 4700. The shell starts the Python server bound to loopback; the desktop sensor uses a random token shared only with that child server. Personal data and the default `config.json` belong in Electron's per-user ARKUS application-data folder, outside the installation and repository. An explicit `ARKUS_CONFIG` environment variable can select another external configuration file.
+
+The foreground sensor is **off every launch**. Enable it deliberately from the ARKUS menu. Every tick makes a fresh Windows foreground-window query. The private comparison value is a session-salted hash of the process name, never a title or full URL. A sanitized application label can be spoken during a drift and is discarded after the engine tick; it is absent from public state, diagnostics and the aggregate ledger. No screenshot or webcam data is read by the sensor. Browser host detection is unavailable in this version: changing tabs within Chrome/Edge is not detected. A browser can be named as an application; its current site cannot. The focus UI must describe this as app-only monitoring.
+
+The nonfocusable countdown card is best-effort always-on-top on the primary display. Exclusive fullscreen applications or Windows security desktops can cover it. Its retarget button requests a deferred lock: switch to your work and remain there for two fresh readings. The card does not inspect background browser windows or claim to know their active tabs. It displays no app identity, window title or host.
+
+Microphone and camera access receive an additional explicit Allow once dialog. Screen capture requires a viewer button click and a separate explicit whole-display selection dialog, with Cancel as the default. Display enumeration requests zero-size thumbnails, so the chooser collects names only, without preview screenshots. The shell never automatically selects a display, window or tab, and never shares system audio. The viewer shows the live share indicator and Stop control; any cloud vision upload requires the corresponding viewer consent. Web Speech recognition is runtime-dependent and is not guaranteed in Electron; typing and available speech synthesis remain usable.
+
+## Packaging
+
+The package sets `asar: false` and includes the desktop, backend and explicitly prepared viewer runtime assets. It bundles the official Python3.13.16 embeddable x64 runtime, verified against the PSF release SHA-256 checksum before extraction. Runtime licenses remain in the package. Source development uses installed Python; the packaged app uses its embedded interpreter, with `ARKUS_PYTHON` available as an explicit override. Sample notes are generated at first run in the user's data directory. No `config.json`, user notes, captures, `.env` or secret keys are packaged. The package is unsigned. A build alone does not prove microphone, display-picker, foreground sensing or fullscreen-overlay behavior; run the manual checks below on the target machine.
+
+## Target-machine checks
+
+1. Launch and confirm no app monitoring until the menu option is enabled. Reload the viewer and confirm the server countdown persists.
+2. Start focus, switch to a non-ARKUS app for two ticks, and inspect `/focus/diag`. Return to ARKUS; it must be home base. Switch between two different desktop apps and confirm drift. Changing tabs in one browser must be described as unsupported.
+3. Retarget from the card; remain in ARKUS and confirm no immediate self-lock. Switch to the intended app, allow two fresh ticks, and confirm lock.
+4. Decline microphone/camera requests and confirm the viewer explains denial. Screen capture must always use the explicit display-choice dialog, never an automatically chosen source. Cancel must deny capture. Explicitly select one display, stop sharing in the viewer, and confirm capture stops. No system audio should be captured.
+5. Close the main window; confirm both the countdown card and child Python server close. Check no keys, titles, app names or full URLs appear in public diagnostics or persisted focus records.
