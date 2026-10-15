@@ -226,6 +226,14 @@ class App:
             node = next(n for n in ordered if n['file'] == 'captures/' + filename)
             return dict(answer='Remembered, sir. A new star with a practical purpose.', nodes=[node['id']], graph=public_graph(self.graph), kind='memory')
 
+    def _remember_exchange(self, question, answer):
+        exchange = [{'role': 'user', 'content': question}, {'role': 'assistant', 'content': answer}]
+        try:
+            self.projects.append_history(exchange)
+        except ProjectError as exc:
+            raise UserError(str(exc), 409) from None
+        self.history.extend(exchange)
+
     def chat(self, question):
         if re.match(r'^remember that\b', question, re.I):
             return self.remember(question)
@@ -233,14 +241,19 @@ class App:
             return self.swap(re.sub(r'^(switch to|try on|use model)\s+', '', question, flags=re.I))
         small = bool(re.fullmatch(r'(hello|hi|hey|good (morning|evening|afternoon)|thanks|thank you|tell me a joke)[.!? ]*', question, re.I))
         if small:
-            return dict(answer='At your service, sir. Even the stars have turned up for work.', nodes=[], kind='smalltalk')
+            with self.lock:
+                answer = 'At your service, sir. Even the stars have turned up for work.'
+                self._remember_exchange(question, answer)
+                return dict(answer=answer, nodes=[], kind='smalltalk')
         with self.lock:
             query = question
             if re.match(r'^(and|what about|how about|it\b|that\b|they\b)', question, re.I) and self.history:
                 query += ' ' + next((h['content'] for h in reversed(self.history) if h['role'] == 'user'), '')
             sources = retrieve(self.graph, query)
             if not sources:
-                return dict(answer="My notes do not cover that, sir. I prefer an honest gap to a decorative invention.", nodes=[], kind='uncovered')
+                answer = "My notes do not cover that, sir. I prefer an honest gap to a decorative invention."
+                self._remember_exchange(question, answer)
+                return dict(answer=answer, nodes=[], kind='uncovered')
             if self.provider == 'offline':
                 snippets = []
                 limit = 6 if re.search(r'\b(compare|overview|summari[sz]e|across|all notes)\b', question, re.I) else 3
@@ -265,12 +278,7 @@ class App:
                     used = [n for n in sources if n['id'] in ids]
                 except (ValueError, KeyError, TypeError):
                     raise UserError('The model did not return valid grounded citations. No sources were fabricated.', 502) from None
-            exchange = [{'role': 'user', 'content': question}, {'role': 'assistant', 'content': answer}]
-            try:
-                self.projects.append_history(exchange)
-            except ProjectError as exc:
-                raise UserError(str(exc), 409) from None
-            self.history.extend(exchange)
+            self._remember_exchange(question, answer)
             return dict(answer=answer, nodes=[n['id'] for n in used], kind='notes' if used else 'uncovered')
 
     def see(self, body):
