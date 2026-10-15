@@ -54,7 +54,7 @@ jobs:
       - name: Build single-file portable executable
         shell: pwsh
         run: |
-          npx --no-install electron-builder --win portable
+          npx --no-install electron-builder --win portable --publish never
           if ($LASTEXITCODE -ne 0) { throw 'Portable builder failed' }
           $built = @(Get-ChildItem -LiteralPath dist -Filter '*.exe' -File)
           if ($built.Count -ne 1) { throw "Expected one portable EXE, found $($built.Count)" }
@@ -62,7 +62,7 @@ jobs:
       - name: Build standard Windows setup executable
         shell: pwsh
         run: |
-          npx --no-install electron-builder --win nsis
+          npx --no-install electron-builder --win nsis --publish never
           if ($LASTEXITCODE -ne 0) { throw 'Windows installer builder failed' }
           $built = @(Get-ChildItem -LiteralPath dist -Filter '*.exe' -File | Where-Object Name -ne 'ARKUS-Portable-v0.1.0.exe')
           if ($built.Count -ne 1) { throw "Expected one setup EXE, found $($built.Count)" }
