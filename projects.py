@@ -127,7 +127,11 @@ class ProjectStore:
         notes = self._path(project_id)
         if project_id != "general" and not notes.is_dir():
             raise ProjectError("Project folder is unavailable.")
-        return self.projects_root / project_id / "history.json"
+        root = self.projects_root
+        folder = root / project_id
+        if root.is_symlink() or folder.is_symlink():
+            raise ProjectError("Linked project history directories are not allowed.")
+        return folder / "history.json"
 
     def read_history(self):
         with self.lock:
