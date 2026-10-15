@@ -47,6 +47,7 @@ ARKUS provides an opt-in, **offline action-plan and reminder engine** for practi
 - **ADA-inspired continuity:** plans and reminders remain isolated with each project and persist across ARKUS restarts. Stored in `%APPDATA%\\arkus\\projects\\<id>\\companion.json` on desktop, not encrypted. Back up these files before reinstalling or resetting Windows.
 - Reminders are **in-app only**: ARKUS must be open and its running server reachable; overdue reminders are surfaced after reopening. Browser notifications require a separate click and browser permission. ARKUS does not install Windows scheduled tasks or operate while closed.
 - Commands: `Create a plan for Quality Review: Check CAD; Record defects; Summarize results`; `Remind me on 2026-12-01 09:30 to check the proposal`; `Daily briefing`; `What can you do?` The structured UI accepts normal line-by-line steps and a date/time picker.
+- **Basic offline CAD:** System controls → Local 3D mesh workshop exports binary STL boxes, cylinders and hollow tubes with bounded dimensions in millimetres, without a key, web access, build123d or hardware. These are basic triangle meshes, **not** engineering-validated models, editable parametric CAD, slicer jobs or robot/3D-printer instructions.
 - **Capability inventory** labels each feature available, requiring hardware/provider qualification, or not implemented. Feature listing is not evidence of device functionality.
 
 ### Reference-source and permission boundaries
