@@ -163,6 +163,7 @@ CAPABILITIES = [
     {"name": "Local reminders and briefing", "status": "available", "source": "Original Brahma-inspired design"},
     {"name": "Voice and interruptible speech", "status": "device_check_required", "source": "ARKUS"},
     {"name": "Local posture and consented vision", "status": "device_check_required", "source": "ARKUS"},
+    {"name": "Basic offline STL primitives", "status": "available", "source": "Original ADA-inspired geometry export"},
     {"name": "Real-time cloud multimodal voice", "status": "requires_provider", "source": "ADA"},
     {"name": "CAD and 3D printer", "status": "requires_optional_tools_and_hardware", "source": "ADA"},
     {"name": "Robotic arm control", "status": "requires_hardware_and_calibration", "source": "O.L.L.I.E"},
