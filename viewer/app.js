@@ -70,7 +70,49 @@ function renderLibrary(){
 }
 function renderNotes(){const q=$('search').value.toLowerCase();$('notes').replaceChildren();for(const node of graph.nodes.filter(n=>`${n.label} ${n.group} ${n.excerpt}`.toLowerCase().includes(q))){const b=document.createElement('button');b.className='note';b.textContent=node.label;b.title=node.label;b.addEventListener('click',()=>selectSource(node));$('notes').append(b);}}
 async function refreshGraph(newGraph){graph=newGraph || await api('/api/graph');graph.nodes??=[];graph.links??=[];renderLibrary();sceneView?.update(graph);}
+function restoreConversation(history=[]){
+  const root=$('messages');root.replaceChildren();
+  const initial=document.createElement('div');initial.className='message assistant';
+  const who=document.createElement('span');who.className='who';who.textContent='ARKUS';
+  const p=document.createElement('p');p.id='greeting';p.textContent='Project memory ready. What shall we explore?';
+  initial.append(who,p);root.append(initial);
+  for(const entry of history.slice(-26)){
+    if(entry && ['user','assistant'].includes(entry.role) && typeof entry.content==='string'){
+      addMessage(entry.content,entry.role);
+    }
+  }
+}
+async function loadProjects(projects){
+  projects=projects || await api('/projects');
+  const selected=$('activeProject');selected.replaceChildren();
+  for(const item of projects.projects || []){
+    const option=document.createElement('option');option.value=item.id;option.textContent=item.name;selected.append(option);
+  }
+  selected.value=projects.active || 'general';
+  document.body.dataset.project=selected.value;
+  return projects;
+}
+async function activateProject(path,payload){
+  const result=await api(path,payload);
+  $('source').hidden=true;
+  if(sceneView)sceneView.positions=new Map();
+  await refreshGraph(result.graph);
+  await loadProjects(result.projects);
+  restoreConversation(result.history);
+  $('search').value='';renderNotes();
+  toast('Workspace active: '+$('activeProject').selectedOptions[0]?.textContent);
+  status('Project memory ready');
+  return result;
+}
 async function command(text){
+  const createProject=text.match(/^create (?:a )?(?:new )?project (?:called|named) (.+?)[.!]?$/i);
+  if(createProject){await activateProject('/projects/create',{name:createProject[1].trim()});return true;}
+  const switchProject=text.match(/^(?:switch (?:to )?project(?: to)?|open project) (.+?)[.!]?$/i);
+  if(switchProject){const name=switchProject[1].trim().toLowerCase();
+    const selected=[...$('activeProject').options].find(o=>o.value===name || o.textContent.toLowerCase()===name);
+    if(!selected)throw new Error('Project not found. Create it in System controls first.');
+    await activateProject('/projects/switch',{project:selected.value});return true;
+  }
   if(/^(?:stop|wait)[.!]?$/i.test(text)){stopSpeech();status('Paused speaking');return true;}
   if(isRetarget(text)){await focusAction('retarget',{from_card:false});return true;}
   if(/(?:focus (?:for|on)|start (?:a )?focus|(?:give me |let'?s do )?(?:\d+|thirty|twenty(?:[ -]five)?|fifteen|forty(?:[ -]five)?|sixty) minutes on this)/i.test(text)){await focusAction('start',{duration:spokenDuration(text)});return true;}
@@ -194,12 +236,22 @@ export function runProbe(){const checks=[['finish window is 900ms',FINISH_MS===9
 document.addEventListener('pointerdown',()=>{if(!interacted){interacted=true;speak($('greeting').textContent);}},{once:true});
 $('chatForm').addEventListener('submit',event=>{event.preventDefault();interacted=true;const q=$('question').value;$('question').value='';submit(q);});
 $('search').addEventListener('input',renderNotes);$('closeSource').addEventListener('click',()=>$('source').hidden=true);$('settingsToggle').addEventListener('click',()=>$('settings').hidden=!$('settings').hidden);$('closeSettings').addEventListener('click',()=>$('settings').hidden=true);$('voice').checked=!MUTED;$('voice').disabled=MUTED;$('voice').addEventListener('change',()=>{if(!$('voice').checked)stopSpeech();});
+$('openProject').addEventListener('click',async()=>{try{await activateProject('/projects/switch',{project:$('activeProject').value});}catch(e){toast(e.message);await loadProjects();}});
+$('createProject').addEventListener('click',async()=>{
+  const name=$('newProject').value.trim();if(!name){toast('Enter a project name.');return;}
+  try{await activateProject('/projects/create',{name});$('newProject').value='';}catch(e){toast(e.message);}
+});
+$('clearProjectChat').addEventListener('click',async()=>{
+  if(!window.confirm('Clear stored conversation in this project? Notes will not be changed.'))return;
+  try{await api('/history/clear',{});restoreConversation([]);toast('Only this project conversation was cleared.');}catch(e){toast(e.message);}
+});
 $('swapModel').addEventListener('click',()=>swapModel());$('verifyModels').addEventListener('click',async()=>{try{const result=await api('/models/verify',{name:$('models').value});toast(result.answer || result.message || 'Selected model verified.');await loadModels();}catch(e){toast(e.message);}});
 $('focusStart').addEventListener('click',()=>focusAction('start'));document.querySelectorAll('[data-focus]').forEach(button=>button.addEventListener('click',()=>focusAction(button.dataset.focus)));$('diagnostics').addEventListener('click',diagnostics);
 $('shareScreen').addEventListener('click',startScreen);$('stopScreen').addEventListener('click',stopScreen);$('askScreen').addEventListener('click',()=>see('screen'));$('watch').addEventListener('change',startWatch);$('watchCloud').addEventListener('change',()=>{if($('watchCloud').checked)toast('Cloud nudges enabled for the current share. Fresh screen frames may incur API charges.');});$('startCamera').addEventListener('click',startCamera);$('stopCamera').addEventListener('click',stopCamera);$('askCamera').addEventListener('click',()=>see('camera'));
 $('postureConsent').addEventListener('change',enablePosture);$('calibratePosture').addEventListener('click',()=>{try{const result=postureController?.calibrate();if(!result)throw new Error('Enable posture awareness first.');$('postureStatus').textContent=`Calibrated locally. ${result.torsoVisible?'Head and torso heuristics enabled.':'Head heuristic enabled; hips are not confidently visible, so torso detection stays off.'}`;}catch(error){toast(error.message);}});
 addEventListener('pagehide',()=>{stopScreen();stopCamera();stopListening();stopSpeech();});
 setupSpeech();
-await Promise.allSettled([refreshGraph(),loadModels(),refreshFocus(),diagnostics()]);
+await Promise.allSettled([refreshGraph(),loadModels(),refreshFocus(),diagnostics(),loadProjects()]);
+try{const history=await api('/projects/history');restoreConversation(history.messages || []);}catch(e){toast('Project history unavailable: '+e.message);}
 const hour=new Date().getHours();$('greeting').textContent=`Good ${hour<12?'morning':hour<17?'afternoon':'evening'}, sir. ${graph.nodes.length} notes indexed, all present and accounted for. What shall we explore?`;
 await createGalaxy();setInterval(refreshFocus,1000);if(params.has('focusprobe'))runProbe();

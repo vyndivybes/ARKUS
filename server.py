@@ -21,6 +21,7 @@ from pathlib import Path
 
 from build import index_notes, public_graph, retrieve, seed
 from focus import Focus
+from projects import ProjectError, ProjectStore
 
 # PERSONA: edit this single block to change ARKUS's character.
 PERSONA = """You are ARKUS, a dry, impeccably polite British butler. Occasionally say sir.
@@ -57,7 +58,10 @@ class App:
     def __init__(self, data_dir=None, notes_dir=None):
         self.data = Path(data_dir or os.environ.get('ARKUS_DATA_DIR', ROOT / 'data')).resolve()
         self.data.mkdir(parents=True, exist_ok=True)
-        self.notes = Path(notes_dir or os.environ.get('ARKUS_NOTES_DIR', self.data / 'notes')).resolve()
+        self.default_notes = Path(notes_dir or os.environ.get('ARKUS_NOTES_DIR', self.data / 'notes')).resolve()
+        self.default_notes.mkdir(parents=True, exist_ok=True)
+        self.projects = ProjectStore(self.data, self.default_notes)
+        self.notes = self.projects.notes_path()
         self.notes.mkdir(parents=True, exist_ok=True)
         self.config_path = Path(os.environ.get('ARKUS_CONFIG', ROOT / 'config.json')).resolve()
         self.config = json.loads(self.config_path.read_text(encoding='utf-8')) if self.config_path.exists() else {'provider': 'offline', 'model': 'offline', 'aliases': {}, 'allow_paid_models': False}
@@ -68,18 +72,51 @@ class App:
         self.key = os.environ.get('ARKUS_API_KEY', self.config.get('api_key', self.config.get('openai_api_key', '')))
         self.token = secrets.token_urlsafe(32)
         self.desktop_token = os.environ.get('ARKUS_DESKTOP_TOKEN', '')
-        self.history = deque(maxlen=12)
+        self.history = deque(self.projects.read_history(), maxlen=12)
         self.lock = threading.RLock()
         self.focus = Focus(self.data / 'focus-ledger.jsonl')
         self.catalog = {}
         self.verified = set()
         self.intro_index = 0
         self.watch_until = 0
-        seed(self.notes)
+        if self.projects.active == 'general':
+            seed(self.notes)
         self.graph = index_notes(self.notes)
 
+    def _load_active_project(self):
+        self.notes = self.projects.notes_path()
+        self.graph = index_notes(self.notes)
+        self.history = deque(self.projects.read_history(), maxlen=12)
+        return {'projects': self.projects.state(), 'graph': public_graph(self.graph),
+                'history': list(self.history), 'answer': 'Project workspace ready, sir.'}
+
+    def create_project(self, name):
+        with self.lock:
+            try:
+                self.projects.create(name)
+                return self._load_active_project()
+            except ProjectError as exc:
+                raise UserError(str(exc), 409) from None
+
+    def switch_project(self, project_id):
+        with self.lock:
+            try:
+                self.projects.switch(project_id)
+                return self._load_active_project()
+            except ProjectError as exc:
+                raise UserError(str(exc), 409) from None
+
+    def clear_chat_history(self):
+        with self.lock:
+            try:
+                self.projects.clear_history()
+            except ProjectError as exc:
+                raise UserError(str(exc), 409) from None
+            self.history.clear()
+            return {'ok': True}
+
     def status(self):
-        return dict(provider=self.provider, model=self.model, watch_active=time.monotonic() < self.watch_until, configured=self.provider == 'offline' or bool(self.key) or self.provider == 'ollama',
+        return dict(project=self.projects.active, provider=self.provider, model=self.model, watch_active=time.monotonic() < self.watch_until, configured=self.provider == 'offline' or bool(self.key) or self.provider == 'ollama',
                     model_verified=self.model in self.verified or self.provider == 'offline', note_count=len(self.graph['nodes']),
                     capabilities={'desktop_sensor': self.focus.fresh(), 'tab_tracking': False,
                                   'vision': self.provider != 'offline', 'offline': self.provider == 'offline',
@@ -189,6 +226,14 @@ class App:
             node = next(n for n in ordered if n['file'] == 'captures/' + filename)
             return dict(answer='Remembered, sir. A new star with a practical purpose.', nodes=[node['id']], graph=public_graph(self.graph), kind='memory')
 
+    def _remember_exchange(self, question, answer):
+        exchange = [{'role': 'user', 'content': question}, {'role': 'assistant', 'content': answer}]
+        try:
+            self.projects.append_history(exchange)
+        except ProjectError as exc:
+            raise UserError(str(exc), 409) from None
+        self.history.extend(exchange)
+
     def chat(self, question):
         if re.match(r'^remember that\b', question, re.I):
             return self.remember(question)
@@ -196,14 +241,19 @@ class App:
             return self.swap(re.sub(r'^(switch to|try on|use model)\s+', '', question, flags=re.I))
         small = bool(re.fullmatch(r'(hello|hi|hey|good (morning|evening|afternoon)|thanks|thank you|tell me a joke)[.!? ]*', question, re.I))
         if small:
-            return dict(answer='At your service, sir. Even the stars have turned up for work.', nodes=[], kind='smalltalk')
+            with self.lock:
+                answer = 'At your service, sir. Even the stars have turned up for work.'
+                self._remember_exchange(question, answer)
+                return dict(answer=answer, nodes=[], kind='smalltalk')
         with self.lock:
             query = question
             if re.match(r'^(and|what about|how about|it\b|that\b|they\b)', question, re.I) and self.history:
                 query += ' ' + next((h['content'] for h in reversed(self.history) if h['role'] == 'user'), '')
             sources = retrieve(self.graph, query)
             if not sources:
-                return dict(answer="My notes do not cover that, sir. I prefer an honest gap to a decorative invention.", nodes=[], kind='uncovered')
+                answer = "My notes do not cover that, sir. I prefer an honest gap to a decorative invention."
+                self._remember_exchange(question, answer)
+                return dict(answer=answer, nodes=[], kind='uncovered')
             if self.provider == 'offline':
                 snippets = []
                 limit = 6 if re.search(r'\b(compare|overview|summari[sz]e|across|all notes)\b', question, re.I) else 3
@@ -228,7 +278,7 @@ class App:
                     used = [n for n in sources if n['id'] in ids]
                 except (ValueError, KeyError, TypeError):
                     raise UserError('The model did not return valid grounded citations. No sources were fabricated.', 502) from None
-            self.history.extend([{'role': 'user', 'content': question}, {'role': 'assistant', 'content': answer}])
+            self._remember_exchange(question, answer)
             return dict(answer=answer, nodes=[n['id'] for n in used], kind='notes' if used else 'uncovered')
 
     def see(self, body):
@@ -305,6 +355,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, self.app.status())
             if path == '/api/graph':
                 return self.send(200, public_graph(self.app.graph))
+            if path == '/projects':
+                return self.send(200, self.app.projects.state())
+            if path == '/projects/history':
+                return self.send(200, {'messages': self.app.projects.read_history()})
             if path == '/models':
                 return self.send(200, self.app.models())
             if path == '/focus/state':
@@ -379,9 +433,12 @@ class Handler(BaseHTTPRequestHandler):
                 result = {'ok': True}
             elif path.startswith('/focus/'):
                 result = self.app.focus.command(path.split('/')[-1], body)
+            elif path == '/projects/create':
+                result = self.app.create_project(body.get('name'))
+            elif path == '/projects/switch':
+                result = self.app.switch_project(body.get('project'))
             elif path == '/history/clear':
-                self.app.history.clear()
-                result = {'ok': True}
+                result = self.app.clear_chat_history()
             elif path == '/watch':
                 if type(body.get('enabled')) is not bool:
                     raise UserError('A watch boolean is required.')

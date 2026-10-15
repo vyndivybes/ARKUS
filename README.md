@@ -24,6 +24,20 @@ Try:
 
 Offline mode extracts matching note text; it is **not an LLM**. Generated conversation and image understanding require a configured model. Source references identify retrieved supporting notes; they do not prove a model's interpretation is correct.
 
+## Project workspaces and continuity (v0.2.0)
+
+Inspired by ADA V2's project-memory concept, ARKUS now offers **local isolated project workspaces** without importing ADA's broad file-reading or self-executing tools.
+
+- In the left-hand Knowledge atlas, choose a project and click **Open**. In System controls, enter a name and click **Create**; the new project becomes active.
+- You may also type or say **"Create project called Carbon Bicycle"** or **"Switch project to Carbon Bicycle"**. Only existing projects can be switched to.
+- Each project has its own markdown notes, captures and bounded conversation history. Its recent dialogue is restored after an ARKUS restart. Retrieval and cloud excerpts use the **active project's notes only**.
+- The original notes directory remains the **General** workspace, including pre-existing captures. There is no migration and no automatic deletion.
+- In desktop mode, metadata lives under `%APPDATA%\\arkus\\projects.json` and project data under `%APPDATA%\\arkus\\projects\\<id>`. In browser mode, these paths live inside the local `data` directory. Project content is ordinary **unencrypted local data** and should be backed up.
+- Project names are validated; traversal and linked project folders are refused. At most 24 project entries are supported. The most recent 40 user/assistant messages per project are kept locally; the model receives at most 12 entries.
+- **Clear this project's conversation** removes stored conversation from the active project after confirmation. It does not delete markdown notes or other workspaces.
+
+**ADA reference and limits:** [nazirlouis/ada_v2](https://github.com/nazirlouis/ada_v2) is MIT-licensed (© 2025 Nazir Louis). We reimplemented its local project-memory idea rather than copying its code. ADA additionally describes Gemini native audio, CAD generation, printer/IoT control, Playwright browsing, gesture control and face matching. ARKUS v0.2.0 **does not claim** these integrations: real-time native duplex voice needs hardware/provider acceptance; CAD and printing require separate tools and device testing; unrestricted browser automation and automatic safety acknowledgement were intentionally not imported; weak heuristic face matching is not treated as authentication. ARKUS's existing galaxy, focus, local posture, typed chat and opt-in vision remain.
+
 ## Configure a model privately
 
 Copy `config.example.json` to `config.json` for browser mode, or `%APPDATA%\arkus\config.json` for desktop mode. Both files stay outside the served viewer. Desktop also honors `ARKUS_CONFIG` for another private path. Restart after changing configuration.
