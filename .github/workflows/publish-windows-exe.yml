@@ -5,6 +5,12 @@ on:
     branches: [main]
     paths:
       - .github/workflows/publish-windows-exe.yml
+      - package.json
+      - package-lock.json
+      - projects.py
+      - server.py
+      - viewer/**
+      - tests/**
   workflow_dispatch:
 
 permissions:
@@ -45,6 +51,7 @@ jobs:
             'dist/win-unpacked/ARKUS.exe',
             'dist/win-unpacked/resources/python/python.exe',
             'dist/win-unpacked/resources/app/server.py',
+            'dist/win-unpacked/resources/app/projects.py',
             'dist/win-unpacked/resources/app/viewer/index.html'
           )) {
             if (-not (Test-Path -LiteralPath $required -PathType Leaf)) {
@@ -58,21 +65,21 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Portable builder failed' }
           $built = @(Get-ChildItem -LiteralPath dist -Filter '*.exe' -File)
           if ($built.Count -ne 1) { throw "Expected one portable EXE, found $($built.Count)" }
-          Move-Item -LiteralPath $built[0].FullName -Destination 'dist/ARKUS-Portable-v0.1.0.exe'
+          Move-Item -LiteralPath $built[0].FullName -Destination 'dist/ARKUS-Portable-v0.2.0.exe'
       - name: Build standard Windows setup executable
         shell: pwsh
         run: |
           npx --no-install electron-builder --win nsis --publish never
           if ($LASTEXITCODE -ne 0) { throw 'Windows installer builder failed' }
-          $built = @(Get-ChildItem -LiteralPath dist -Filter '*.exe' -File | Where-Object Name -ne 'ARKUS-Portable-v0.1.0.exe')
+          $built = @(Get-ChildItem -LiteralPath dist -Filter '*.exe' -File | Where-Object Name -ne 'ARKUS-Portable-v0.2.0.exe')
           if ($built.Count -ne 1) { throw "Expected one setup EXE, found $($built.Count)" }
-          Move-Item -LiteralPath $built[0].FullName -Destination 'dist/ARKUS-Setup-v0.1.0.exe'
+          Move-Item -LiteralPath $built[0].FullName -Destination 'dist/ARKUS-Setup-v0.2.0.exe'
       - name: Verify publishable EXEs and write checksums
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $hashFile = 'dist/ARKUS-EXE-SHA256SUMS.txt'
-          foreach ($name in @('ARKUS-Portable-v0.1.0.exe', 'ARKUS-Setup-v0.1.0.exe')) {
+          foreach ($name in @('ARKUS-Portable-v0.2.0.exe', 'ARKUS-Setup-v0.2.0.exe')) {
             $f = Get-Item -LiteralPath (Join-Path 'dist' $name) -ErrorAction Stop
             if ($f.Length -lt 10MB) { throw "EXE is unexpectedly small: $name ($($f.Length) bytes)" }
             $hash = (Get-FileHash -LiteralPath $f.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -84,8 +91,8 @@ jobs:
         with:
           name: ARKUS-windows-executables
           path: |
-            dist/ARKUS-Setup-v0.1.0.exe
-            dist/ARKUS-Portable-v0.1.0.exe
+            dist/ARKUS-Setup-v0.2.0.exe
+            dist/ARKUS-Portable-v0.2.0.exe
             dist/ARKUS-EXE-SHA256SUMS.txt
           if-no-files-found: error
       - name: Publish direct EXE downloads to existing preview release
@@ -93,17 +100,20 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release view v0.1.0-preview --repo "$env:GITHUB_REPOSITORY"
-          if ($LASTEXITCODE -ne 0) { throw 'Existing release not found' }
-          gh release upload v0.1.0-preview --repo "$env:GITHUB_REPOSITORY" --clobber 'dist/ARKUS-Setup-v0.1.0.exe' 'dist/ARKUS-Portable-v0.1.0.exe' 'dist/ARKUS-EXE-SHA256SUMS.txt'
+          gh release view v0.2.0-preview --repo "$env:GITHUB_REPOSITORY" *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create v0.2.0-preview --repo "$env:GITHUB_REPOSITORY" --target "$env:GITHUB_SHA" --prerelease --title "ARKUS v0.2.0 Windows Preview" --notes "Standalone Windows build: locally isolated project workspaces, persistent per-project conversation, safe project switching, note retrieval, and existing focus/voice/vision controls. Unsigned; cloud model and physical devices require separate configuration and acceptance."
+            if ($LASTEXITCODE -ne 0) { throw 'Could not create versioned release' }
+          }
+          gh release upload v0.2.0-preview --repo "$env:GITHUB_REPOSITORY" --clobber 'dist/ARKUS-Setup-v0.2.0.exe' 'dist/ARKUS-Portable-v0.2.0.exe' 'dist/ARKUS-EXE-SHA256SUMS.txt'
           if ($LASTEXITCODE -ne 0) { throw 'Release upload failed' }
       - name: Verify both EXEs are available in the release
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $assets = gh release view v0.1.0-preview --repo "$env:GITHUB_REPOSITORY" --json assets | ConvertFrom-Json
-          foreach ($name in @('ARKUS-Setup-v0.1.0.exe', 'ARKUS-Portable-v0.1.0.exe')) {
+          $assets = gh release view v0.2.0-preview --repo "$env:GITHUB_REPOSITORY" --json assets | ConvertFrom-Json
+          foreach ($name in @('ARKUS-Setup-v0.2.0.exe', 'ARKUS-Portable-v0.2.0.exe')) {
             $matches = @($assets.assets | Where-Object name -eq $name)
             if ($matches.Count -ne 1 -or $matches[0].size -lt 10MB) {
               throw "Release asset absent or unexpectedly small: $name"
