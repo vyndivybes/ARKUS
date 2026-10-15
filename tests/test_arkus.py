@@ -55,6 +55,41 @@ class ArkusTests(unittest.TestCase):
         self.assertEqual(self.app.chat('Good morning')['nodes'], [])
         self.assertEqual(self.app.chat('zyxnonexistent astrophysics')['kind'], 'uncovered')
 
+    def test_help_is_actionable_and_offline_unknown_is_honest(self):
+        result = self.app.chat('What can you do?')
+        self.assertEqual(result['kind'], 'help')
+        self.assertIn('Ollama', result['answer'])
+        self.assertEqual(result['nodes'], [])
+        with patch('server.retrieve', return_value=[]):
+            unknown = self.app.chat('Explain how nuclear fusion works.')
+        self.assertEqual(unknown['kind'], 'uncovered')
+        self.assertIn('not a conversational AI', unknown['answer'])
+
+    def test_configured_model_answers_general_questions_without_fabricated_sources(self):
+        self.app.provider = 'ollama'
+        self.app.model = 'verified-local-model'
+        self.app.verified.add(self.app.model)
+        with patch('server.retrieve', return_value=[]), patch.object(self.app, 'completion', return_value='Nuclear fusion joins light nuclei.') as completion:
+            first = self.app.chat('Explain nuclear fusion in one sentence')
+            follow = self.app.chat('Explain it more simply')
+        self.assertEqual(first['kind'], 'general')
+        self.assertEqual(first['nodes'], [])
+        self.assertIn('Nuclear fusion', first['answer'])
+        self.assertEqual(follow['kind'], 'general')
+        self.assertEqual(follow['nodes'], [])
+        self.assertEqual(completion.call_count, 2)
+        history = completion.call_args.args[0]
+        self.assertTrue(any(msg['role'] == 'assistant' and 'Nuclear fusion' in msg['content'] for msg in history))
+
+    def test_configured_model_can_answer_greetings(self):
+        self.app.provider = 'ollama'
+        self.app.model = 'verified-local-model'
+        self.app.verified.add(self.app.model)
+        with patch('server.retrieve', return_value=[]), patch.object(self.app, 'completion', return_value='Good morning!'):
+            reply = self.app.chat('Good morning')
+        self.assertEqual(reply['kind'], 'general')
+        self.assertEqual(reply['answer'], 'Good morning!')
+
     def test_model_no_near_match_no_cost_by_default(self):
         with self.assertRaises(UserError):
             self.app.swap('astra version 987')
