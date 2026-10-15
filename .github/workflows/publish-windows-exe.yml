@@ -9,6 +9,7 @@ on:
       - package-lock.json
       - projects.py
       - companion.py
+      - cad_shapes.py
       - server.py
       - viewer/**
       - tests/**
@@ -54,6 +55,7 @@ jobs:
             'dist/win-unpacked/resources/app/server.py',
             'dist/win-unpacked/resources/app/projects.py',
             'dist/win-unpacked/resources/app/companion.py',
+            'dist/win-unpacked/resources/app/cad_shapes.py',
             'dist/win-unpacked/resources/app/viewer/index.html'
           )) {
             if (-not (Test-Path -LiteralPath $required -PathType Leaf)) {
