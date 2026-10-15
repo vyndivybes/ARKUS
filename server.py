@@ -195,8 +195,8 @@ class App:
         if re.match(r'^(switch to|try on|use model)\s+', question, re.I):
             return self.swap(re.sub(r'^(switch to|try on|use model)\s+', '', question, flags=re.I))
         small = bool(re.fullmatch(r'(hello|hi|hey|good (morning|evening|afternoon)|thanks|thank you|tell me a joke)[.!? ]*', question, re.I))
-        if small:
-            return dict(answer='At your service, sir. Even the stars have turned up for work.', nodes=[], kind='smalltalk')
+        if small and self.provider == 'offline':
+            return dict(answer='At your service. I can search your notes, save a thought and run focus sessions. For real conversation, connect a local model; say help for setup.', nodes=[], kind='smalltalk')
         if re.fullmatch(r'(?:help|what can you do|what are your capabilities|how do i use arkus)[?.! ]*', question, re.I):
             mode = ('Offline search is active, so I cannot reason beyond your saved notes. '
                     'To enable general conversation without API fees, install Ollama and a local model, '
