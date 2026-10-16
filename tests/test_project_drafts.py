@@ -81,4 +81,4 @@ class DraftFilesTests(unittest.TestCase):
     def test_empty_notes_environment_uses_project_data_instead_of_current_directory(self):
         with patch.dict(os.environ,{"ARKUS_NOTES_DIR":""}), patch("server.seed"), patch("server.index_notes",return_value={"nodes":[],"links":[]}):
             isolated=App(self.root/"isolated")
-        self.assertEqual(isolated.default_notes,self.root/"isolated"/"notes")
+        self.assertEqual(isolated.default_notes,(self.root/"isolated"/"notes").resolve())
