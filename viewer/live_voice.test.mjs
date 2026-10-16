@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {LIVE_ENDPOINT,liveUrl,setupMessage,floatToPcm16,pcm16ToFloat,parseLiveMessage,createLiveVoice} from './live_voice.js';
+import {LIVE_ENDPOINT,liveUrl,setupMessage,floatToPcm16,pcm16ToFloat,parseLiveMessage,cameraMessage,createLiveVoice} from './live_voice.js';
 
 test('only constrained Live WebSocket endpoint receives the ephemeral token',()=>{
   assert.match(liveUrl('auth_tokens/abc1234'),/BidiGenerateContentConstrained\?access_token=auth_tokens%2Fabc1234$/);
@@ -51,7 +51,7 @@ test('consented Live session connects, streams PCM and stops all microphone trac
   const prior={AudioContext:globalThis.AudioContext,AudioWorkletNode:globalThis.AudioWorkletNode,
                WebSocket:globalThis.WebSocket,navigator:globalThis.navigator};
   const tracks=[{stopped:false,stop(){this.stopped=true}}];
-  let socket,node,requested=0;
+  let socket,node,requested=0,videoConsented=false;
   class FakeAudioContext {
     constructor(){this.sampleRate=48000;this.destination={};this.audioWorklet={addModule:async()=>{}};this.currentTime=0;}
     resume(){return Promise.resolve()}
@@ -76,6 +76,7 @@ test('consented Live session connects, streams PCM and stops all microphone trac
       assert.equal(opts.audio.echoCancellation,true);requested++;return {getTracks:()=>tracks};}}}});
     const states=[];
     const live=createLiveVoice({getToken:async()=>({token:'auth_tokens/temporary123',model:'gemini-3.1-flash-live-preview'}),
+                                getCameraFrame:()=>videoConsented?'data:image/jpeg;base64,/9j/4AAQ':null,
                                 onState:x=>states.push(x)});
     await live.start();
     assert.equal(requested,1);
@@ -86,11 +87,20 @@ test('consented Live session connects, streams PCM and stops all microphone trac
     assert.equal(live.active,true);
     node.port.onmessage({data:new Float32Array(4096)});
     assert.equal(socket.sent[1].realtimeInput.audio.mimeType,'audio/pcm;rate=16000');
+    assert.equal(live.sendVideoFrame(),false);
+    assert.equal(socket.sent.filter(p=>p.realtimeInput?.video).length,0);
+    videoConsented=true;
+    assert.equal(live.sendVideoFrame(),true);
+    assert.deepEqual(socket.sent[2].realtimeInput.video,{mimeType:'image/jpeg',data:'/9j/4AAQ'});
+    assert.match(socket.sent[3].clientContent.turns[0].parts[0].text,/describe what you can currently see/i);
+    assert.equal(live.sendVideoFrame(),true);
+    assert.equal(socket.sent.filter(p=>p.clientContent).length,1);
     assert.ok(!JSON.stringify(socket.sent).includes('temporary123'));
     live.stop();
     assert.equal(tracks[0].stopped,true);
     assert.equal(socket.closed,true);
     assert.equal(live.active,false);
+    assert.equal(live.sendVideoFrame(),false);
     assert.equal(states.at(-1),'Off');
   }finally{
     for(const [key,value] of Object.entries(prior)){
@@ -99,4 +109,38 @@ test('consented Live session connects, streams PCM and stops all microphone trac
       else globalThis[key]=value;
     }
   }
+});
+
+test('camera frames use the Gemini Live JPEG realtimeInput protocol and reject unsafe data',()=>{
+  const jpeg='data:image/jpeg;base64,/9j/4AAQ';
+  assert.deepEqual(cameraMessage(jpeg),{realtimeInput:{video:{mimeType:'image/jpeg',data:'/9j/4AAQ'}}});
+  assert.throws(()=>cameraMessage('data:image/png;base64,AAAA'));
+  assert.throws(()=>cameraMessage('https://example.com/photo.jpg'));
+  assert.throws(()=>cameraMessage('data:image/jpeg;base64,not valid'));
+  assert.throws(()=>cameraMessage('data:image/jpeg;base64,'+'A'.repeat(900001)));
+});
+
+test('camera is never sent before opt-in and stops with the live session', async()=>{
+  const oldSocket=globalThis.WebSocket;
+  let sent=[];
+  class FakeSocket {
+    static OPEN=1;
+    readyState=1;
+    bufferedAmount=0;
+    send(data){sent.push(JSON.parse(data));}
+    close(){this.readyState=3;}
+  }
+  try{
+    globalThis.WebSocket=FakeSocket;
+    let visible=false;
+    const session=createLiveVoice({
+      getToken:async()=>{throw Error('not called in isolated camera test')},
+      getCameraFrame:()=>visible?'data:image/jpeg;base64,/9j/4AAQ':null
+    });
+    assert.equal(session.sendVideoFrame(),false);
+    // No microphone, video or provider connection is started by merely declaring a camera source.
+    assert.equal(sent.length,0);
+    session.stop();
+    assert.equal(session.sendVideoFrame(),false);
+  }finally{globalThis.WebSocket=oldSocket;}
 });
