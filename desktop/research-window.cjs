@@ -1,12 +1,13 @@
 'use strict';
 const {BrowserWindow,session}=require('electron');
-const {safeUrl,shortText,normalizeQuery}=require('./research-utils.cjs');
+const {safeUrl,shortText,normalizeQuery,safeLinkList,chooseResearchLink,verifyNavigation}=require('./research-utils.cjs');
 function createResearchWindow(owner){
- let window=null;
+ let window=null,lastLinks=[];
  const partition='arkus-public-research';
  const researchSession=session.fromPartition(partition,{cache:false});
  researchSession.setPermissionRequestHandler((_wc,_permission,callback)=>callback(false));
  researchSession.setPermissionCheckHandler(()=>false);
+ researchSession.on('will-download',(event)=>event.preventDefault()); // Research can never create a download.
  // Block unapproved cross-host requests and scheme navigations, including redirects.
  researchSession.webRequest.onBeforeRequest((details,callback)=>{
    if(!['GET','HEAD'].includes(details.method)||!details.url.startsWith('https://'))return callback({cancel:true});
@@ -14,7 +15,7 @@ function createResearchWindow(owner){
    catch{callback({cancel:true});}
  });
  async function perform(action,value){
-  if(action==='close'){if(window&&!window.isDestroyed())window.close();window=null;return {status:'closed'};}
+  if(action==='close'){if(window&&!window.isDestroyed())window.close();window=null;lastLinks=[];return {status:'closed'};}
   if(action==='search'){
    const query=normalizeQuery(value);
    await perform('open','https://en.wikipedia.org/w/index.php?search='+encodeURIComponent(query));
@@ -22,6 +23,7 @@ function createResearchWindow(owner){
   }
   if(action==='open'){
    const url=safeUrl(value);
+   lastLinks=[];
    if(!window||window.isDestroyed()){
      window=new BrowserWindow({parent:owner,width:1050,height:780,title:'ARKUS · Public Research',webPreferences:{
        partition,sandbox:true,contextIsolation:true,nodeIntegration:false,webSecurity:true,
@@ -31,9 +33,24 @@ function createResearchWindow(owner){
      window.webContents.on('will-navigate',(event,url)=>{try{safeUrl(url)}catch{event.preventDefault()}});
    }
    await window.loadURL(url);
-   return {status:'opened',url:safeUrl(window.webContents.getURL())};
+   return {status:'opened',...verifyNavigation(url,window.webContents.getURL())};
   }
   if(!window||window.isDestroyed())throw Error('Open a reference page first.');
+  if(action==='links'){
+    // Read only publicly visible anchor hrefs; never click buttons, submit forms, or run page-supplied code.
+    const entries=await window.webContents.executeJavaScript(
+      '[...document.querySelectorAll("a[href]")].slice(0,150).map(a=>({title:(a.innerText||a.textContent||"").trim().slice(0,200),href:a.href}))',true);
+    lastLinks=safeLinkList(entries);
+    return {status:'links',url:safeUrl(window.webContents.getURL()),links:lastLinks};
+  }
+  if(action==='follow'){
+    const url=chooseResearchLink(lastLinks,value);
+    lastLinks=[]; // A previous snapshot cannot be reused after navigation.
+    await window.loadURL(url);
+    const verified=verifyNavigation(url,window.webContents.getURL());
+    const opened=await perform('read');
+    return {status:'followed',...verified,title:opened.title,text:opened.text};
+  }
   if(action==='read'){
    const result=await window.webContents.executeJavaScript(
     '({title:document.title,text:(document.body?.innerText||"").slice(0,6000)})',true);
@@ -50,6 +67,6 @@ function createResearchWindow(owner){
   }
   throw Error('Unsupported research operation.');
  }
- return {perform,close(){if(window&&!window.isDestroyed())window.close();window=null;}};
+ return {perform,close(){if(window&&!window.isDestroyed())window.close();window=null;lastLinks=[];}};
 }
 module.exports={createResearchWindow};

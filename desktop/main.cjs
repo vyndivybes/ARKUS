@@ -132,7 +132,7 @@ app.whenReady().then(async () => {
   research=createResearchWindow(mainWindow);
   ipcMain.handle('research-action',async(event,action,value)=>{
     if(!mainWindow || event.sender!==mainWindow.webContents ||
-       !['open','read','find','search','close'].includes(action))throw Error('Untrusted research request');
+       !['open','read','find','search','close','links','follow'].includes(action))throw Error('Untrusted research request');
     return research.perform(action,value);
   });
   const area = screen.getPrimaryDisplay().workArea;

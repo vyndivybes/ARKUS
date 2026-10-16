@@ -24,6 +24,12 @@ Try:
 
 Offline mode extracts matching note text; it is **not an LLM**. Generated conversation and image understanding require a configured model. Source references identify retrieved supporting notes; they do not prove a model's interpretation is correct.
 
+## Consent-controlled spoken reference research
+
+ARKUS now links its Gemini Live conversation to the **isolated Windows public-research browser**, without granting arbitrary Chrome/Edge or private account access. In System controls → Public research browser, select **Allow ARKUS Live to read approved public reference pages**. You can then ask ARKUS to research a Wikipedia topic, read the page, list permitted links, and follow a numbered link. Each new public search query appears in an explicit confirmation before being sent to Wikipedia. Source page text is returned with the actual HTTPS URL so ARKUS can discuss what it observed; the model must treat web text as untrusted evidence, not instructions.
+
+Navigation uses a bounded list of up to 12 links extracted from the currently open page, filters to existing approved HTTPS hosts, rejects redirects to unapproved hosts and verifies the resulting URL. Link-following **never clicks arbitrary page elements, submits forms, visits logged-in accounts or downloads/executables**, and no robot or operating-system action is available. The local consent checkbox can be turned off at any time, which stops sharing results with Gemini. On a regular web browser (outside the Windows desktop app), these actions return an unavailable error rather than pretending they succeeded. Provider access, quota, and Windows runtime remain device-dependent.
+
 ## Conversational model fallback and optional current-information search
 
 When a configured and verified language model is accessible, ARKUS now gives **general conversational answers** to questions not covered by local notes. General answers are labeled `kind=general` and have no fabricated note or web citations; they are model responses, not verified live facts. The entirely free offline mode continues to search local project notes and honestly reports missing evidence.
