@@ -39,7 +39,7 @@ This is an **opt-in developer workflow**, not an ARKUS runtime skill, permission
 ## Qualification
 
 ```powershell
-python -m unittest tests.test_rea_review -v
+python -m unittest discover -s tests -p test_rea_review.py -v
 npm test
 ```
 
