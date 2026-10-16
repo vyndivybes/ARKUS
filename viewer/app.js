@@ -2,6 +2,7 @@ import {createCameraCapture} from './camera_capture.js';
 import {requestScreenCapture} from './screen_capture.js';
 import {createLiveVoice} from './live_voice.js';
 import {classifyGesture,GestureGate} from './gestures.js';
+import {createHandUI} from './hand_ui.js';
 // One finish window for the full spoken thought; no organ starts this microphone.
 export const FINISH_MS = 900;
 export const WATCH_SAMPLE_MS = 5000;
@@ -15,6 +16,7 @@ let token, graph = {nodes: [], links: []}, sceneView, busy = false, interacted =
 let screenStream, cameraStream, watchTimer, previousPixels, stillSince = 0, lastNudge = 0, lastDiff = null;
 let postureController, postureGeneration=0, postureStarting=false;
 let gestureGate=new GestureGate(),gestureIndex=0,cadSelected=null,cadPreviewSession=null;
+let handController=null,handGeneration=0,handStarting=false;
 let postureWrites=Promise.resolve();
 let focusState = {}, eventSequence = 0, reliefUntil = 0, recognizer, listening = false, speechBuffer = '', finishTimer, toastTimer, liveVoice, liveProject;
 const colors = ['#75e9cc','#e7b16d','#7b9eea','#b690dc','#81c5e3','#d388ab','#b1c788'];
@@ -76,7 +78,7 @@ function renderLibrary(){
   $('groups').replaceChildren();for(const [name,count] of counts){const item=document.createElement('div');item.className='group';const dot=document.createElement('i');dot.style.background=colorFor(name);const label=document.createElement('span');label.textContent=name;const b=document.createElement('b');b.textContent=String(count).padStart(2,'0');item.append(dot,label,b);$('groups').append(item);}
   renderNotes();
 }
-function renderNotes(){const q=$('search').value.toLowerCase();$('notes').replaceChildren();for(const node of graph.nodes.filter(n=>`${n.label} ${n.group} ${n.excerpt}`.toLowerCase().includes(q))){const b=document.createElement('button');b.className='note';b.textContent=node.label;b.title=node.label;b.addEventListener('click',()=>selectSource(node));$('notes').append(b);}}
+function renderNotes(){const q=$('search').value.toLowerCase();$('notes').replaceChildren();for(const node of graph.nodes.filter(n=>`${n.label} ${n.group} ${n.excerpt}`.toLowerCase().includes(q))){const b=document.createElement('button');b.className='note';b.dataset.nodeId=String(node.id);b.textContent=node.label;b.title=node.label;b.addEventListener('click',()=>selectSource(node));$('notes').append(b);}}
 async function refreshGraph(newGraph){graph=newGraph || await api('/api/graph');graph.nodes??=[];graph.links??=[];renderLibrary();sceneView?.update(graph);}
 function restoreConversation(history=[]){
   const root=$('messages');root.replaceChildren();
@@ -102,7 +104,7 @@ async function loadProjects(projects){
 }
 async function activateProject(path,payload){
   cadPreviewSession?.close();cadPreviewSession=null;$('cadPreviewCanvas').hidden=true;cadSelected=null;
-  liveVoice?.stop();
+  liveVoice?.stop();stopHandGestures();
   const result=await api(path,payload);
   $('draftFilename').value='';$('draftContent').value='';$('draftValidation').textContent='';$('manualSkill').value='';
   $('source').hidden=true;
@@ -542,7 +544,7 @@ const cameraCapture=createCameraCapture({
     return navigator.mediaDevices.getUserMedia({video:{width:{ideal:640},height:{ideal:480}},audio:false});
   },
   onStream:stream=>{
-    stopPosture();cameraStream=stream;
+    stopHandGestures();stopPosture();cameraStream=stream;
     $('cameraPreview').srcObject=stream;$('cameraPreview').hidden=!stream;
     $('stopCamera').disabled=!stream;$('askCamera').disabled=!stream;
     // Every fresh activation requires fresh cloud-sharing consent.
@@ -557,6 +559,58 @@ async function startCamera(){
   finally{if(!cameraCapture.connecting)$('startCamera').disabled=false;}
 }
 function stopCamera(){cameraCapture.stop();$('startCamera').disabled=false;}
+const handUI=createHandUI({
+  source:$('source'),notes:$('notes'),cursor:$('handCursor'),
+  elementAt:(x,y)=>document.elementFromPoint(x,y),
+  viewport:()=>({width:innerWidth,height:innerHeight}),
+  onSelect:id=>{
+    const item=graph.nodes.find(node=>String(node.id)===id);
+    if(item)selectSource(item,true);
+  },
+});
+function stopHandGestures(message='Hand tracking off. Camera frames and landmarks remain local.'){
+  handGeneration++;handStarting=false;
+  const previous=handController;handController=null;
+  previous?.stop();
+  handUI.stop();$('handGestureConsent').checked=false;
+  $('handGestureStatus').textContent=message;
+}
+async function enableHandGestures(){
+  if(!$('handGestureConsent').checked){stopHandGestures();return;}
+  if(!cameraStream){
+    stopHandGestures('Start camera preview first, then enable local hand tracking.');
+    toast('Camera preview must be enabled before hand gestures.');return;
+  }
+  if(handController||handStarting)return;
+  const generation=++handGeneration;handStarting=true;
+  $('handGestureStatus').textContent='Loading the locally verified MediaPipe hand model…';
+  try{
+    const {createLocalHandTracking}=await import('/hand_gestures.js');
+    if(generation!==handGeneration)return;
+    const controller=await createLocalHandTracking({
+      video:$('cameraPreview'),
+      onSample:sample=>{
+        if(generation===handGeneration&&$('handGestureConsent').checked)handUI.sample(sample);
+      },
+      onGesture:event=>{
+        if(generation!==handGeneration||!$('handGestureConsent').checked)return;
+        const outcome=handUI.action(event);
+        if(outcome==='note selected')$('handGestureStatus').textContent='Pinch: knowledge note selected.';
+        else if(outcome==='source grabbed')$('handGestureStatus').textContent='Fist: source panel grabbed. Move hand to reposition.';
+        else if(outcome==='source moved')$('handGestureStatus').textContent='Moving source panel · open palm to release.';
+        else if(outcome==='released')$('handGestureStatus').textContent='Released. Pinch to select or fist to grab again.';
+      },
+      onError:error=>{
+        if(generation===handGeneration)stopHandGestures('Hand tracking stopped: '+String(error?.message||'local detector error').slice(0,140));
+      }
+    });
+    if(generation!==handGeneration){controller.stop();return;}
+    handController=controller;handStarting=false;
+    $('handGestureStatus').textContent='Local hand tracking active · pinch a knowledge note, grab source heading with fist, open palm to release.';
+  }catch(error){
+    if(generation===handGeneration)stopHandGestures('Hand tracker unavailable. Run npm run prepare:hand-model before starting ARKUS. '+String(error?.message||'').slice(0,100));
+  }
+}
 function stopPosture(message='Posture awareness is off. No frames or landmarks leave your device.'){
   const wasActive=Boolean(postureController || postureStarting);postureGeneration++;postureStarting=false;postureController?.stop();postureController=null;$('postureConsent').checked=false;$('gestureConsent').checked=false;gestureGate=new GestureGate();$('gestureStatus').textContent='Gestures off.';$('calibratePosture').disabled=true;$('postureStatus').textContent=message;
   if(wasActive){postureWrites=postureWrites.catch(()=>{}).then(()=>api('/focus/posture',{enabled:false}));postureWrites.catch(error=>toast(`Could not clear local posture state: ${error.message}`));}
@@ -791,7 +845,7 @@ $('swapModel').addEventListener('click',()=>swapModel());$('verifyModels').addEv
 $('focusStart').addEventListener('click',()=>focusAction('start'));document.querySelectorAll('[data-focus]').forEach(button=>button.addEventListener('click',()=>focusAction(button.dataset.focus)));$('diagnostics').addEventListener('click',diagnostics);
 $('shareScreen').addEventListener('click',startScreen);$('stopScreen').addEventListener('click',stopScreen);$('askScreen').addEventListener('click',()=>see('screen'));$('watch').addEventListener('change',startWatch);$('watchCloud').addEventListener('change',()=>{if($('watchCloud').checked)toast('Cloud nudges enabled for the current share. Fresh screen frames may incur API charges.');});$('startCamera').addEventListener('click',startCamera);$('stopCamera').addEventListener('click',stopCamera);$('askCamera').addEventListener('click',()=>see('camera'));
 $('cameraLiveConsent').addEventListener('change',()=>{updatePrivacy();if($('cameraLiveConsent').checked){if(!cameraStream)toast('Enable camera preview before live sharing.');else if(!liveVoice?.active)toast('Start LIVE to share opt-in camera frames. Provider charges may apply.');}});
-$('postureConsent').addEventListener('change',enablePosture);$('gestureConsent').addEventListener('change',enablePosture);$('calibratePosture').addEventListener('click',()=>{try{const result=postureController?.calibrate();if(!result)throw new Error('Enable posture awareness first.');$('postureStatus').textContent=`Calibrated locally. ${result.torsoVisible?'Head and torso heuristics enabled.':'Head heuristic enabled; hips are not confidently visible, so torso detection stays off.'}`;}catch(error){toast(error.message);}});
+$('postureConsent').addEventListener('change',enablePosture);$('gestureConsent').addEventListener('change',enablePosture);$('handGestureConsent').addEventListener('change',enableHandGestures);$('calibratePosture').addEventListener('click',()=>{try{const result=postureController?.calibrate();if(!result)throw new Error('Enable posture awareness first.');$('postureStatus').textContent=`Calibrated locally. ${result.torsoVisible?'Head and torso heuristics enabled.':'Head heuristic enabled; hips are not confidently visible, so torso detection stays off.'}`;}catch(error){toast(error.message);}});
 $('researchOpen').addEventListener('click',()=>researchAction('open',$('researchUrl').value.trim()));
 $('researchSearch').addEventListener('click',()=>researchAction('search',$('researchTopic').value.trim()));
 $('researchRead').addEventListener('click',()=>researchAction('read'));
@@ -899,7 +953,7 @@ $('groundedSearch').addEventListener('click',async()=>{
     $('groundedStatus').textContent=result.grounded?'Grounded result with '+result.sources.length+' web sources.':'Google returned no source citations; verify the answer independently.';
   }catch(e){$('groundedStatus').textContent=e.message;}
 });
-addEventListener('pagehide',()=>{cadPreviewSession?.close();liveVoice?.stop();stopScreen();stopCamera();stopListening();stopSpeech();});
+addEventListener('pagehide',()=>{cadPreviewSession?.close();liveVoice?.stop();stopHandGestures();stopScreen();stopCamera();stopListening();stopSpeech();});
 setupSpeech();
 
 await Promise.allSettled([refreshGraph(),loadModels(),refreshFocus(),diagnostics(),loadProjects(),loadCapabilities(),loadSkills(),loadActions(),loadCADModels(),loadKnowledge(),loadDraftFiles(),loadMCP()]);
