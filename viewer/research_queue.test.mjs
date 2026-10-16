@@ -91,5 +91,5 @@ test('untrusted read responses are bounded, and errors never advance steps',asyn
   const good=await queue.next();
   assert.ok(good.title.length<=160);
   assert.ok(good.text.length<=6000);
-  assert.deepEqual(good.links,[]); // queue stores extracted text only, not executable page objects
+  assert.equal(Object.hasOwn(good,'links'),false); // queue stores extracted text only, not executable page objects
 });
