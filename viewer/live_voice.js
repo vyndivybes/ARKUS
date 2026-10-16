@@ -58,9 +58,17 @@ export function parseLiveMessage(message){
   return {type:'content',audio,inputText:c.inputTranscription?.text||'',outputText:c.outputTranscription?.text||'',interrupted:c.interrupted===true,turnComplete:c.turnComplete===true};
 }
 
-export function createLiveVoice({getToken,onState=()=>{},onTranscript=()=>{},onError=()=>{}}){
+export function cameraMessage(jpegDataUrl){
+  if(typeof jpegDataUrl!=='string' || jpegDataUrl.length>900000 || !/^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/.test(jpegDataUrl)){
+    throw new Error('Camera frame must be a bounded JPEG data URL.');
+  }
+  const encoded=jpegDataUrl.slice('data:image/jpeg;base64,'.length);
+  return {realtimeInput:{video:{mimeType:'image/jpeg',data:encoded}}};
+}
+
+export function createLiveVoice({getToken,getCameraFrame=()=>null,onState=()=>{},onTranscript=()=>{},onError=()=>{}}){
   let ws=null,stream=null, micContext=null,micNode=null,micSource=null,outputContext=null,nextTime=0,playing=new Set();
-  let pending=false,ready=false,session=0,finalInput='',finalOutput='',seconds=0;
+  let pending=false,ready=false,session=0,finalInput='',finalOutput='',seconds=0,videoTimer=null,cameraAnnounced=false;
 
   const update=value=>onState(value);
   function silence(){
@@ -69,6 +77,7 @@ export function createLiveVoice({getToken,onState=()=>{},onTranscript=()=>{},onE
     nextTime=0;
   }
   function releaseResources(){
+    clearInterval(videoTimer);videoTimer=null;
     silence();
     if(stream){for(const track of stream.getTracks())track.stop();stream=null;}
     try{micNode?.disconnect()}catch{}
@@ -80,7 +89,7 @@ export function createLiveVoice({getToken,onState=()=>{},onTranscript=()=>{},onE
     out?.close().catch(()=>{});
   }
   function stop(){
-    session++;pending=false;ready=false;
+    session++;pending=false;ready=false;cameraAnnounced=false;
     const socket=ws;ws=null;
     if(socket){try{socket.close(1000,'Stopped locally')}catch{}}
     releaseResources();
@@ -101,6 +110,23 @@ export function createLiveVoice({getToken,onState=()=>{},onTranscript=()=>{},onE
     nextTime=when+buffer.duration;
     playing.add(source);source.start(when);
   }
+  function sendVideoFrame(){
+    if(!ready || !ws || ws.readyState!==WebSocket.OPEN || ws.bufferedAmount>512000)return false;
+    let jpeg;
+    try{jpeg=getCameraFrame();}catch{return false;} // Preview can briefly be unready after camera activation.
+    if(!jpeg){cameraAnnounced=false;return false;} // Consent absent, sharing stopped, or preview disabled.
+    try{
+      ws.send(JSON.stringify(cameraMessage(jpeg)));
+      if(!cameraAnnounced){
+        cameraAnnounced=true;
+        ws.send(JSON.stringify({clientContent:{
+          turns:[{role:'user',parts:[{text:'Camera sharing is now enabled. Briefly describe what you can currently see and invite me to ask questions. State any uncertainty.'}]}],
+          turnComplete:true
+        }}));
+      }
+      return true;
+    }catch(error){onError('Live camera frame could not be shared.');return false;}
+  }
   async function enableMic(current){
     micContext=new AudioContext();
     await micContext.audioWorklet.addModule('/live_mic_worklet.js');
@@ -118,6 +144,8 @@ export function createLiveVoice({getToken,onState=()=>{},onTranscript=()=>{},onE
     micSource.connect(micNode);micNode.connect(micContext.destination);
     await micContext.resume();
     update('Listening · interrupt by speaking');
+    sendVideoFrame();
+    videoTimer=setInterval(sendVideoFrame,1000); // Gemini Live video: <= 1 JPEG frame per second.
   }
   async function start(){
     if(pending||ws) return;
@@ -163,5 +191,5 @@ export function createLiveVoice({getToken,onState=()=>{},onTranscript=()=>{},onE
       if(session===current){onError(error?.message||'Live microphone unavailable.');stop();}
     }
   }
-  return {start,stop,get active(){return ready},get connecting(){return pending}};
+  return {start,stop,sendVideoFrame,get active(){return ready},get connecting(){return pending}};
 }
