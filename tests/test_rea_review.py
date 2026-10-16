@@ -59,7 +59,7 @@ class REAReviewTests(unittest.TestCase):
             self.assertEqual(receipt.parent, (root / "out").resolve())
             command = execute.call_args.args[0]
             self.assertEqual(command[:3], ["npx.cmd", "--yes", "rea-agents@6.5.0"])
-            self.assertEqual(command[3:], ["analyze-javascript-application", str(target.resolve()), "--json"])
+            self.assertEqual(command[3:], ["analyze-javascript-application", str(target.resolve()), "--json", "--filter-output", "evidence_id,normalized_result.statistics"])
             self.assertFalse(execute.call_args.kwargs.get("shell", False))
             self.assertNotEqual(execute.call_args.kwargs["stdout"], subprocess.PIPE)
             self.assertNotEqual(execute.call_args.kwargs["stderr"], subprocess.PIPE)
@@ -91,6 +91,25 @@ class REAReviewTests(unittest.TestCase):
                     with self.assertRaises(ReviewError):
                         run_review(root, approved=True, storage_root=root / "out")
             self.assertFalse((root / "out").exists())
+
+    def test_empty_output_has_actionable_diagnostic(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            process, launch = process_factory("")
+            with patch("rea_review.shutil.which", return_value="npx.cmd"), \
+                 patch("rea_review.subprocess.Popen", side_effect=launch):
+                with self.assertRaisesRegex(ReviewError, "zero bytes"):
+                    run_review(root, approved=True, storage_root=root / "out")
+
+    def test_oversized_output_reports_actual_size_separately(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            oversized = '{"big":"' + ("x" * (8 * 1024 * 1024)) + '"}'
+            process, launch = process_factory(oversized)
+            with patch("rea_review.shutil.which", return_value="npx.cmd"), \
+                 patch("rea_review.subprocess.Popen", side_effect=launch):
+                with self.assertRaisesRegex(ReviewError, "exceeded 8 MiB"):
+                    run_review(root, approved=True, storage_root=root / "out")
 
     def test_ctrl_c_also_terminates_process_tree(self):
         with tempfile.TemporaryDirectory() as tmp:
