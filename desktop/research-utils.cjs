@@ -22,4 +22,10 @@ function safeLinks(rows){
  }
  return links;
 }
-module.exports={safeUrl,shortText,normalizeQuery,safeLinks};
+function requireApprovedResearchHost(requested,current){
+ const approved=new URL(safeUrl(requested)),landing=new URL(safeUrl(current));
+ if(approved.hostname.toLowerCase()!==landing.hostname.toLowerCase())
+   throw Error('Research redirected away from the approved host.');
+ return true;
+}
+module.exports={safeUrl,shortText,normalizeQuery,safeLinks,requireApprovedResearchHost};
