@@ -10,6 +10,7 @@ test('only constrained Live WebSocket endpoint receives the ephemeral token',()=
 test('setup binds exact model and speech-only modalities with no executable tools',()=>{
   const setup=setupMessage('gemini-3.1-flash-live-preview').setup;
   assert.equal(setup.model,'models/gemini-3.1-flash-live-preview');
+  assert.equal(setup.realtimeInputConfig.automaticActivityDetection.silenceDurationMs,900);
   assert.deepEqual(setup.generationConfig.responseModalities,['AUDIO']);
   assert.deepEqual(setup.tools[0].functionDeclarations.map(d=>d.name),[
     'get_briefing','search_knowledge','remember_note','set_reminder',

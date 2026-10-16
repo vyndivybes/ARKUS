@@ -101,6 +101,12 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $hashFile = 'dist/ARKUS-EXE-SHA256SUMS.txt'
+          [ordered]@{
+            source_commit = '${{ github.sha }}'
+            workflow_run = 'https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}'
+            built_at_utc = [DateTime]::UtcNow.ToString('o')
+            platform = 'windows-x64'
+          } | ConvertTo-Json | Set-Content -LiteralPath 'dist/ARKUS-BUILD.json' -Encoding utf8
           foreach ($name in @('ARKUS-Portable-v0.8.0.exe', 'ARKUS-Setup-v0.8.0.exe')) {
             $f = Get-Item -LiteralPath (Join-Path 'dist' $name) -ErrorAction Stop
             if ($f.Length -lt 10MB) { throw "EXE is unexpectedly small: $name ($($f.Length) bytes)" }
@@ -116,6 +122,7 @@ jobs:
             dist/ARKUS-Setup-v0.8.0.exe
             dist/ARKUS-Portable-v0.8.0.exe
             dist/ARKUS-EXE-SHA256SUMS.txt
+            dist/ARKUS-BUILD.json
           if-no-files-found: error
       - name: Publish direct EXE downloads to existing preview release
         shell: pwsh
@@ -127,7 +134,7 @@ jobs:
             gh release create v0.8.0-preview --repo "$env:GITHUB_REPOSITORY" --target "$env:GITHUB_SHA" --prerelease --title "ARKUS v0.8.0 Windows Preview" --notes "Standalone Windows build: locally isolated project workspaces, persistent per-project conversation, one-step confirmed action plans, cross-project reminders, project backups, isolated tested calculation skill forge, honest daily briefing, real capability inventory, and existing voice/vision/focus controls. Unsigned; cloud model and physical devices require separate configuration and acceptance."
             if ($LASTEXITCODE -ne 0) { throw 'Could not create versioned release' }
           }
-          gh release upload v0.8.0-preview --repo "$env:GITHUB_REPOSITORY" --clobber 'dist/ARKUS-Setup-v0.8.0.exe' 'dist/ARKUS-Portable-v0.8.0.exe' 'dist/ARKUS-EXE-SHA256SUMS.txt'
+          gh release upload v0.8.0-preview --repo "$env:GITHUB_REPOSITORY" --clobber 'dist/ARKUS-Setup-v0.8.0.exe' 'dist/ARKUS-Portable-v0.8.0.exe' 'dist/ARKUS-EXE-SHA256SUMS.txt' 'dist/ARKUS-BUILD.json'
           if ($LASTEXITCODE -ne 0) { throw 'Release upload failed' }
       - name: Verify both EXEs are available in the release
         shell: pwsh

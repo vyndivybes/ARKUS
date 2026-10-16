@@ -72,6 +72,19 @@ def atomic_json(path, value):
     temp.replace(path)
 
 
+def project_scoped(operation):
+    """Compare the session's workspace and run the operation under the same lock."""
+    from functools import wraps
+
+    @wraps(operation)
+    def guarded(self, *args, project=None, **kwargs):
+        with self.lock:
+            if project is not None and (type(project) is not str or project != self.projects.active):
+                raise UserError('Project changed. Reopen the workspace and restart the operation.', 409)
+            return operation(self, *args, **kwargs)
+    return guarded
+
+
 class App:
     def __init__(self, data_dir=None, notes_dir=None):
         self.data = Path(data_dir or os.environ.get('ARKUS_DATA_DIR', ROOT / 'data')).resolve()
@@ -131,18 +144,21 @@ class App:
             except ProjectError as exc:
                 raise UserError(str(exc), 409) from None
 
+    @project_scoped
     def list_project_drafts(self):
         try:
             return self.projects.list_drafts()
         except ProjectError as exc:
             raise UserError(str(exc),409) from None
 
+    @project_scoped
     def read_project_draft(self,name):
         try:
             return self.projects.read_draft(name)
         except ProjectError as exc:
             raise UserError(str(exc),409) from None
 
+    @project_scoped
     def write_project_draft(self,name,content,approved=False,replace=False):
         try:
             return self.projects.write_draft(name,content,approved,replace)
@@ -187,6 +203,7 @@ class App:
             try:return self.parametric_cad.export(self.projects.active,identity)
             except CADModelError as exc:raise UserError(str(exc),409) from None
 
+    @project_scoped
     def live_token(self):
         """One-use renderer token; never expose a persistent Google credential."""
         with self.lock:
@@ -199,7 +216,7 @@ class App:
                 raise UserError('A Live token was just requested. Avoid repeated sessions.',429)
             self._last_live_token_at=time.monotonic()
             try:
-                return LiveTokenIssuer(self.key).create(model)
+                return {**LiveTokenIssuer(self.key).create(model), "project":self.projects.active}
             except LiveTokenError as exc:
                 raise UserError(str(exc),502) from None
 
@@ -521,6 +538,7 @@ class App:
             node = next(n for n in ordered if n['file'] == 'captures/' + filename)
             return dict(answer='Remembered, sir. A new star with a practical purpose.', nodes=[node['id']], graph=public_graph(self.graph), kind='memory')
 
+    @project_scoped
     def live_tool(self, name, arguments):
         """Narrowly scoped Gemini Live operations; no shell, browser, external network or arbitrary files."""
         expected = {
@@ -555,6 +573,7 @@ class App:
         result = self.create_workflow_reminder(arguments["when"].strip(), arguments["message"].strip())
         return {"answer": result["answer"], "saved": True}
 
+    @project_scoped
     def record_live_exchange(self, user_text, assistant_text):
         """Durably store confirmed speech transcripts in the active project history."""
         if (type(user_text) is not str or type(assistant_text) is not str
@@ -842,18 +861,18 @@ class Handler(BaseHTTPRequestHandler):
                 self.app.focus.sample(body)
                 result = {'ok': True}
             elif path == '/live/token':
-                result = self.app.live_token()
+                result = self.app.live_token(project=body.get("project"))
             elif path == '/live/tool':
-                result = self.app.live_tool(body.get("name"), body.get("arguments"))
+                result = self.app.live_tool(body.get("name"), body.get("arguments"), project=body.get("project"))
             elif path == '/live/history':
-                result = self.app.record_live_exchange(body.get("user"), body.get("assistant"))
+                result = self.app.record_live_exchange(body.get("user"), body.get("assistant"), project=body.get("project"))
             elif path == '/workspace/files':
-                result = self.app.list_project_drafts()
+                result = self.app.list_project_drafts(project=body.get("project"))
             elif path == '/workspace/read':
-                result = self.app.read_project_draft(body.get("name"))
+                result = self.app.read_project_draft(body.get("name"), project=body.get("project"))
             elif path == '/workspace/write':
                 result = self.app.write_project_draft(body.get("name"),body.get("content"),
-                                                      body.get("approved"),body.get("replace",False))
+                                                      body.get("approved"),body.get("replace",False), project=body.get("project"))
             elif path == '/knowledge/import':
                 result=self.app.knowledge_import(body.get("name"),body.get("data"))
             elif path == '/knowledge/remove':
