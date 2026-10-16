@@ -99,6 +99,7 @@ async function activateProject(path,payload){
   await refreshGraph(result.graph);
   await loadProjects(result.projects);
   await refreshWorkflows(false);
+  await loadSkills();
   restoreConversation(result.history);
   $('search').value='';renderNotes();
   toast('Workspace active: '+$('activeProject').selectedOptions[0]?.textContent);
@@ -163,6 +164,38 @@ async function refreshWorkflows(announce=true){
 async function showBriefing(){
   try{const b=await api('/workflow/briefing');addMessage(b.answer,'assistant');speak(b.answer);
   }catch(e){toast(e.message);}
+}
+async function loadSkills(){
+  const root=$('skillRegistry');root.replaceChildren();
+  try{
+    const data=await api('/skills');
+    if(!data.skills.length){root.textContent='No custom skills in this project.';return;}
+    for(const skill of data.skills){
+      const card=document.createElement('div');card.className='workflow-card';
+      const title=document.createElement('strong');title.textContent=skill.name+' · '+skill.status;
+      const desc=document.createElement('p');desc.textContent=skill.description+' ('+skill.operation+' · '+skill.inputs.join(', ')+')';
+      card.append(title,desc);
+      if(skill.status==='draft'){
+        const test=document.createElement('button');test.textContent='Test locally';
+        test.addEventListener('click',async()=>{try{const r=await api('/skills/test',{id:skill.id});$('skillResult').textContent=r.tests;await loadSkills();}catch(e){toast(e.message);}});
+        card.append(test);
+      }else if(skill.status==='tested'){
+        const active=document.createElement('button');active.textContent='Activate skill';
+        active.addEventListener('click',async()=>{if(!confirm('Activate this tested, arithmetic-only skill?'))return;
+          try{await api('/skills/activate',{id:skill.id});await loadSkills();}catch(e){toast(e.message);}});
+        card.append(active);
+      }else{
+        const run=document.createElement('button');run.textContent='Run skill';
+        run.addEventListener('click',async()=>{
+          const values={};for(const name of skill.inputs){const raw=prompt('Enter numeric '+name+':');if(raw===null)return;values[name]=raw;}
+          try{const result=await api('/skills/run',{name:skill.name,parameters:values});
+            const message=result.output+': '+result.result;$('skillResult').textContent=message;addMessage(message);speak(message);
+          }catch(e){toast(e.message);}
+        });card.append(run);
+      }
+      root.append(card);
+    }
+  }catch(e){root.textContent=e.message;}
 }
 async function loadCapabilities(){
   try{const data=await api('/workflow/capabilities');const box=$('capabilityList');box.replaceChildren();
@@ -360,6 +393,16 @@ $('reminderNotifications').addEventListener('click',async()=>{
   const permission=await Notification.requestPermission();
   toast(permission==='granted'?'Local reminder alerts enabled while ARKUS is open.':'Browser permission not granted; in-app reminders still work.');
 });
+$('generateSkill').addEventListener('click',async()=>{
+  const goal=$('skillGoal').value.trim();if(!goal){toast('Describe the new calculation skill.');return;}
+  try{const draft=await api('/skills/generate',{goal});$('skillResult').textContent='Skill draft '+draft.name+' created. Run its tests before activation.';await loadSkills();}
+  catch(e){toast(e.message);}
+});
+$('createManualSkill').addEventListener('click',async()=>{
+  try{const spec=JSON.parse($('manualSkill').value);const draft=await api('/skills/propose',{spec});
+    $('manualSkill').value='';$('skillResult').textContent='Draft '+draft.name+' saved. Test before activation.';await loadSkills();}
+  catch(e){toast(e.message);}
+});
 $('dailyBriefing').addEventListener('click',showBriefing);
 $('generateCad').addEventListener('click',async()=>{
   try{
@@ -387,7 +430,7 @@ $('postureConsent').addEventListener('change',enablePosture);$('calibratePosture
 addEventListener('pagehide',()=>{stopScreen();stopCamera();stopListening();stopSpeech();});
 setupSpeech();
 
-await Promise.allSettled([refreshGraph(),loadModels(),refreshFocus(),diagnostics(),loadProjects(),loadCapabilities()]);
+await Promise.allSettled([refreshGraph(),loadModels(),refreshFocus(),diagnostics(),loadProjects(),loadCapabilities(),loadSkills()]);
 await refreshWorkflows(false);
 try{const history=await api('/projects/history');restoreConversation(history.messages || []);}catch(e){toast('Project history unavailable: '+e.message);}
 const hour=new Date().getHours();$('greeting').textContent=`Good ${hour<12?'morning':hour<17?'afternoon':'evening'}, sir. ${graph.nodes.length} notes indexed, all present and accounted for. What shall we explore?`;
