@@ -9,7 +9,7 @@ function createResearchWindow(owner){
  researchSession.setPermissionCheckHandler(()=>false);
  // Block unapproved cross-host requests and scheme navigations, including redirects.
  researchSession.webRequest.onBeforeRequest((details,callback)=>{
-   if(!details.url.startsWith('http'))return callback({cancel:true});
+   if(!['GET','HEAD'].includes(details.method)||!details.url.startsWith('https://'))return callback({cancel:true});
    try{safeUrl(details.url);callback({cancel:false});}
    catch{callback({cancel:true});}
  });
@@ -20,7 +20,7 @@ function createResearchWindow(owner){
    if(!window||window.isDestroyed()){
      window=new BrowserWindow({parent:owner,width:1050,height:780,title:'ARKUS · Public Research',webPreferences:{
        partition,sandbox:true,contextIsolation:true,nodeIntegration:false,webSecurity:true,
-       javascript:false
+       javascript:true
      }});
      window.webContents.setWindowOpenHandler(()=>({action:'deny'}));
      window.webContents.on('will-navigate',(event,url)=>{try{safeUrl(url)}catch{event.preventDefault()}});
