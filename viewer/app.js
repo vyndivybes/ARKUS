@@ -1,3 +1,4 @@
+import {createLiveVoice} from './live_voice.js';
 // One finish window for the full spoken thought; no organ starts this microphone.
 export const FINISH_MS = 900;
 export const WATCH_SAMPLE_MS = 5000;
@@ -11,7 +12,7 @@ let token, graph = {nodes: [], links: []}, sceneView, busy = false, interacted =
 let screenStream, cameraStream, watchTimer, previousPixels, stillSince = 0, lastNudge = 0, lastDiff = null;
 let postureController, postureGeneration=0, postureStarting=false;
 let postureWrites=Promise.resolve();
-let focusState = {}, eventSequence = 0, reliefUntil = 0, recognizer, listening = false, speechBuffer = '', finishTimer, toastTimer;
+let focusState = {}, eventSequence = 0, reliefUntil = 0, recognizer, listening = false, speechBuffer = '', finishTimer, toastTimer, liveVoice;
 const colors = ['#75e9cc','#e7b16d','#7b9eea','#b690dc','#81c5e3','#d388ab','#b1c788'];
 const groupColors = new Map();
 const colorFor = group => {if(!groupColors.has(group)) groupColors.set(group, colors[groupColors.size % colors.length]); return groupColors.get(group);};
@@ -39,7 +40,7 @@ function toast(text) { $('toast').textContent=text; $('toast').hidden=false; cle
 function stopSpeech(){window.speechSynthesis?.cancel();}
 function speak(text) {
   // Central privacy guard: every audible path passes here, including focus events.
-  if(MUTED || !$('voice').checked || !interacted || !window.speechSynthesis) return;
+  if(MUTED || !$('voice').checked || !interacted || liveVoice?.active || !window.speechSynthesis) return;
   stopSpeech(); const utterance=new SpeechSynthesisUtterance(text);
   const voices=speechSynthesis.getVoices(); utterance.voice=voices.find(v=>v.lang==='en-GB') || voices.find(v=>v.lang.startsWith('en')) || null;
   utterance.rate=.98; utterance.onstart=()=>status('Speaking'); utterance.onend=()=>status(listening?'Listening':'Awaiting your next thought');
@@ -93,6 +94,7 @@ async function loadProjects(projects){
   return projects;
 }
 async function activateProject(path,payload){
+  liveVoice?.stop();
   const result=await api(path,payload);
   $('source').hidden=true;
   if(sceneView)sceneView.positions=new Map();
@@ -296,7 +298,7 @@ function setupSpeech(){
   };
   recognizer.onerror=event=>{toast(`Microphone: ${event.error}. Tap the ear to retry.`);stopListening();};
   recognizer.onend=()=>{listening=false;$('mic').classList.remove('active');$('mic').setAttribute('aria-label','Start microphone');status('Microphone off');if(speechBuffer){clearTimeout(finishTimer);finishTimer=setTimeout(flushSpeech,FINISH_MS);}};
-  $('mic').addEventListener('click',()=>{if(listening){stopListening();return;}stopSpeech();try{recognizer.start();listening=true;$('mic').classList.add('active');$('mic').setAttribute('aria-label','Stop microphone');status('Listening');}catch(e){toast(e.message);}});
+  $('mic').addEventListener('click',()=>{if(listening){stopListening();return;}if(liveVoice?.active||liveVoice?.connecting)liveVoice.stop();stopSpeech();try{recognizer.start();listening=true;$('mic').classList.add('active');$('mic').setAttribute('aria-label','Stop microphone');status('Listening');}catch(e){toast(e.message);}});
 }
 function flushSpeech(){const text=speechBuffer;speechBuffer='';$('question').value='';if(text)submit(text);}
 function stopListening(){listening=false;speechBuffer='';clearTimeout(finishTimer);recognizer?.stop();$('mic').classList.remove('active');}
@@ -379,9 +381,35 @@ async function createGalaxy(){
 }
 export function runProbe(){const checks=[['finish window is 900ms',FINISH_MS===900],['single source flies',sourceDecision('notes',[1])==='fly'],['four sources hold cluster',sourceDecision('notes',[1,2,3,4])==='cluster'],['small talk holds camera',sourceDecision('smalltalk',[1])==='hold'],['empty sources hold camera',sourceDecision('notes',[])==='hold'],['retarget natural phrase',isRetarget("okay, I'm gonna need you to keep me in this tab")],['pixel equality is still',pixelDifference(new Uint8ClampedArray([1,2,3,255]),new Uint8ClampedArray([1,2,3,255]))===0],['watch cloud requires consent',!watchEligible({monitor:true,consent:false,stillMs:70000,cooldownMs:200000,active:true})],['watch rejects tab capture',!watchEligible({monitor:false,consent:true,stillMs:70000,cooldownMs:200000,active:true})],['watch threshold and cooldown',watchEligible({monitor:true,consent:true,stillMs:60000,cooldownMs:180000,active:true})],['watch cooldown guard',!watchEligible({monitor:true,consent:true,stillMs:70000,cooldownMs:170000,active:true})],['viewport 1440 by 900',innerWidth===1440&&innerHeight===900]];const pass=checks.every(([,ok])=>ok);document.title=`ARKUS PROBE ${pass?'PASS':'FAIL'} ${checks.filter(([,ok])=>ok).length}/${checks.length}`;const pre=document.createElement('pre');pre.id='probeResults';pre.textContent=checks.map(([name,ok])=>`${ok?'PASS':'FAIL'} ${name}`).join('\n');Object.assign(pre.style,{position:'fixed',inset:'100px 20px auto auto',zIndex:100,background:'#07151f',padding:'20px',border:'1px solid #78ddc6'});document.body.append(pre);window.arkusProbe={pass,checks};return {pass,checks};}
 
+liveVoice=createLiveVoice({
+  getToken:()=>api('/live/token',{}),
+  onState:value=>{
+    status('Live · '+value);
+    const running=value!=='Off';
+    $('liveMic').classList.toggle('active',running);
+    $('liveMic').setAttribute('aria-label',running?'Stop Gemini Live conversation':'Start Gemini Live conversation');
+  },
+  onTranscript:(text,role)=>addMessage(text,role),
+  onError:message=>toast(message)
+});
+$('liveMic').addEventListener('click',async()=>{
+  if(liveVoice.active||liveVoice.connecting){liveVoice.stop();return;}
+  if(MUTED||!$('voice').checked){toast('Live voice requires audio output. Disable mute and enable VOICE.');return;}
+  if(!navigator.mediaDevices?.getUserMedia||!window.AudioWorkletNode){
+    toast('Gemini Live requires a browser with microphone and AudioWorklet support.');return;
+  }
+  try{
+    const configured=await api('/api/status');
+    if(!configured.live_available){
+      toast('Set provider=gemini, enable_gemini_live=true and allow_paid_models=true in private ARKUS config. Gemini Live may incur charges.');return;
+    }
+    stopListening();stopSpeech();interacted=true;
+    await liveVoice.start();
+  }catch(error){toast(error.message);}
+});
 document.addEventListener('pointerdown',()=>{if(!interacted){interacted=true;speak($('greeting').textContent);}},{once:true});
 $('chatForm').addEventListener('submit',event=>{event.preventDefault();interacted=true;const q=$('question').value;$('question').value='';submit(q);});
-$('search').addEventListener('input',renderNotes);$('closeSource').addEventListener('click',()=>$('source').hidden=true);$('settingsToggle').addEventListener('click',()=>$('settings').hidden=!$('settings').hidden);$('closeSettings').addEventListener('click',()=>$('settings').hidden=true);$('voice').checked=!MUTED;$('voice').disabled=MUTED;$('voice').addEventListener('change',()=>{if(!$('voice').checked)stopSpeech();});
+$('search').addEventListener('input',renderNotes);$('closeSource').addEventListener('click',()=>$('source').hidden=true);$('settingsToggle').addEventListener('click',()=>$('settings').hidden=!$('settings').hidden);$('closeSettings').addEventListener('click',()=>$('settings').hidden=true);$('voice').checked=!MUTED;$('voice').disabled=MUTED;$('voice').addEventListener('change',()=>{if(!$('voice').checked){stopSpeech();liveVoice?.stop();}});
 $('openProject').addEventListener('click',async()=>{try{await activateProject('/projects/switch',{project:$('activeProject').value});}catch(e){toast(e.message);await loadProjects();}});
 $('createProject').addEventListener('click',async()=>{
   const name=$('newProject').value.trim();if(!name){toast('Enter a project name.');return;}
@@ -467,7 +495,7 @@ $('swapModel').addEventListener('click',()=>swapModel());$('verifyModels').addEv
 $('focusStart').addEventListener('click',()=>focusAction('start'));document.querySelectorAll('[data-focus]').forEach(button=>button.addEventListener('click',()=>focusAction(button.dataset.focus)));$('diagnostics').addEventListener('click',diagnostics);
 $('shareScreen').addEventListener('click',startScreen);$('stopScreen').addEventListener('click',stopScreen);$('askScreen').addEventListener('click',()=>see('screen'));$('watch').addEventListener('change',startWatch);$('watchCloud').addEventListener('change',()=>{if($('watchCloud').checked)toast('Cloud nudges enabled for the current share. Fresh screen frames may incur API charges.');});$('startCamera').addEventListener('click',startCamera);$('stopCamera').addEventListener('click',stopCamera);$('askCamera').addEventListener('click',()=>see('camera'));
 $('postureConsent').addEventListener('change',enablePosture);$('calibratePosture').addEventListener('click',()=>{try{const result=postureController?.calibrate();if(!result)throw new Error('Enable posture awareness first.');$('postureStatus').textContent=`Calibrated locally. ${result.torsoVisible?'Head and torso heuristics enabled.':'Head heuristic enabled; hips are not confidently visible, so torso detection stays off.'}`;}catch(error){toast(error.message);}});
-addEventListener('pagehide',()=>{stopScreen();stopCamera();stopListening();stopSpeech();});
+addEventListener('pagehide',()=>{liveVoice?.stop();stopScreen();stopCamera();stopListening();stopSpeech();});
 setupSpeech();
 
 await Promise.allSettled([refreshGraph(),loadModels(),refreshFocus(),diagnostics(),loadProjects(),loadCapabilities(),loadSkills(),loadActions()]);

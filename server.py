@@ -27,6 +27,7 @@ from cad_shapes import GeometryError, generate as generate_stl
 from backup import BackupError, export_backup
 from skill_forge import SkillForge, SkillError
 from gemini_adapter import GeminiAdapter, GeminiError
+from live_tokens import LiveTokenIssuer, LiveTokenError
 from action_executor import ActionExecutor, ActionError
 
 # PERSONA: edit this single block to change ARKUS's character.
@@ -88,6 +89,7 @@ class App:
         self.verified = set()
         self.intro_index = 0
         self.watch_until = 0
+        self._last_live_token_at = 0
         if self.projects.active == 'general':
             seed(self.notes)
         self.graph = index_notes(self.notes)
@@ -129,6 +131,22 @@ class App:
             return generate_stl(shape, dimensions)
         except GeometryError as exc:
             raise UserError(str(exc), 409) from None
+
+    def live_token(self):
+        """One-use renderer token; never expose a persistent Google credential."""
+        with self.lock:
+            if self.provider != 'gemini' or not self.config.get('enable_gemini_live', False):
+                raise UserError('Gemini Live is not enabled in your private local configuration.',409)
+            if self.config.get('allow_paid_models') is not True:
+                raise UserError('Gemini Live pricing is not guaranteed free. Explicit cost permission is required.',409)
+            model=self.config.get('live_model','gemini-3.1-flash-live-preview')
+            if time.monotonic()-self._last_live_token_at<4:
+                raise UserError('A Live token was just requested. Avoid repeated sessions.',429)
+            self._last_live_token_at=time.monotonic()
+            try:
+                return LiveTokenIssuer(self.key).create(model)
+            except LiveTokenError as exc:
+                raise UserError(str(exc),502) from None
 
     def request_action(self, goal):
         """Produce a proposed action only. No model may execute it."""
@@ -286,7 +304,7 @@ class App:
                 raise UserError(str(exc), 409) from None
 
     def status(self):
-        return dict(project=self.projects.active, provider=self.provider, model=self.model, watch_active=time.monotonic() < self.watch_until, configured=self.provider == 'offline' or bool(self.key) or self.provider == 'ollama',
+        return dict(live_available=(self.provider == 'gemini' and self.config.get('enable_gemini_live') is True and self.config.get('allow_paid_models') is True and bool(self.key)),project=self.projects.active, provider=self.provider, model=self.model, watch_active=time.monotonic() < self.watch_until, configured=self.provider == 'offline' or bool(self.key) or self.provider == 'ollama',
                     model_verified=self.model in self.verified or self.provider == 'offline', note_count=len(self.graph['nodes']),
                     capabilities={'desktop_sensor': self.focus.fresh(), 'tab_tracking': False,
                                   'vision': self.provider != 'offline', 'offline': self.provider == 'offline',
@@ -522,7 +540,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header('X-Content-Type-Options', 'nosniff')
         self.send_header('Referrer-Policy', 'no-referrer')
         self.send_header('Cross-Origin-Resource-Policy', 'same-origin')
-        self.send_header('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
+        self.send_header('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' wss://generativelanguage.googleapis.com; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
         try:
             self.end_headers()
             self.wfile.write(body)
@@ -619,6 +637,8 @@ class Handler(BaseHTTPRequestHandler):
             if path == '/internal/sensor':
                 self.app.focus.sample(body)
                 result = {'ok': True}
+            elif path == '/live/token':
+                result = self.app.live_token()
             elif path == '/chat':
                 result = self.app.chat(checked_question(body))
             elif path == '/remember':
