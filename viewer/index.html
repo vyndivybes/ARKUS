@@ -53,13 +53,13 @@
 </div><div id="researchLinks" class="workflow-list"></div>
 <pre id="researchResult" style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:180px;overflow:auto">No research page open.</pre>
 </section><section><h3>Smart home · local devices <span>OPTIONAL</span></h3>
-<p>Disabled by default. This connector discovers only one user-entered private LAN IPv4 address at a time. No network-wide scanning, cloud account access, voice-triggered controls or automatic switching.</p>
+<p>Disabled by default. This connector inspects only one explicitly entered local IP at a time. To request a device change by voice, first enable the smart-home connector, pair the device, then activate the microphone and say “Hey ARKUS, turn on Study Light” (using the exact paired device name). Every recognized request still requires a typed approval phrase. ARKUS cannot listen while its microphone is off; automatic/unattended device switching is not enabled.</p>
 <label>Device IPv4 address<input id="smartHost" maxlength="15" placeholder="192.168.1.100" inputmode="decimal"></label>
 <div class="row"><button id="smartDiscover" type="button">Inspect one device</button><button id="smartPair" type="button" disabled class="secondary">Trust inspected device</button></div>
 <p id="smartCandidate" class="hint">No device inspected.</p>
 <div class="row"><button type="button" id="smartRefresh" class="secondary">Refresh trusted devices</button></div>
 <div id="smartDevices" class="workflow-list">Smart-home connection is disabled until locally configured.</div>
-<p id="smartStatus" role="status" class="hint">Device actions require a separate proposal and an exact typed confirmation phrase. No activity is triggered by AI tools.</p>
+<p id="smartStatus" role="status" class="hint">Voice requests only prepare device actions. A separate, exact typed confirmation is required before any device is switched.</p>
 </section><section><h3>Local 3D mesh workshop</h3>
 <p>Create and export basic STL primitives, inspired by ADA's CAD concept, without installing Python CAD packages. Not a validated parametric bicycle model.</p>
 <label>Shape<select id="cadShape"><option value="box">Box</option><option value="cylinder">Cylinder</option><option value="tube">Tube</option></select></label>
