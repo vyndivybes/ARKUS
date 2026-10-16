@@ -51,7 +51,7 @@ test('consented Live session connects, streams PCM and stops all microphone trac
   const prior={AudioContext:globalThis.AudioContext,AudioWorkletNode:globalThis.AudioWorkletNode,
                WebSocket:globalThis.WebSocket,navigator:globalThis.navigator};
   const tracks=[{stopped:false,stop(){this.stopped=true}}];
-  let socket,node,requested=0;
+  let socket,node,requested=0,videoConsented=false;
   class FakeAudioContext {
     constructor(){this.sampleRate=48000;this.destination={};this.audioWorklet={addModule:async()=>{}};this.currentTime=0;}
     resume(){return Promise.resolve()}
@@ -76,6 +76,7 @@ test('consented Live session connects, streams PCM and stops all microphone trac
       assert.equal(opts.audio.echoCancellation,true);requested++;return {getTracks:()=>tracks};}}}});
     const states=[];
     const live=createLiveVoice({getToken:async()=>({token:'auth_tokens/temporary123',model:'gemini-3.1-flash-live-preview'}),
+                                getCameraFrame:()=>videoConsented?'data:image/jpeg;base64,/9j/4AAQ':null,
                                 onState:x=>states.push(x)});
     await live.start();
     assert.equal(requested,1);
@@ -86,11 +87,20 @@ test('consented Live session connects, streams PCM and stops all microphone trac
     assert.equal(live.active,true);
     node.port.onmessage({data:new Float32Array(4096)});
     assert.equal(socket.sent[1].realtimeInput.audio.mimeType,'audio/pcm;rate=16000');
+    assert.equal(live.sendVideoFrame(),false);
+    assert.equal(socket.sent.filter(p=>p.realtimeInput?.video).length,0);
+    videoConsented=true;
+    assert.equal(live.sendVideoFrame(),true);
+    assert.deepEqual(socket.sent[2].realtimeInput.video,{mimeType:'image/jpeg',data:'/9j/4AAQ'});
+    assert.match(socket.sent[3].clientContent.turns[0].parts[0].text,/describe what you can currently see/i);
+    assert.equal(live.sendVideoFrame(),true);
+    assert.equal(socket.sent.filter(p=>p.clientContent).length,1);
     assert.ok(!JSON.stringify(socket.sent).includes('temporary123'));
     live.stop();
     assert.equal(tracks[0].stopped,true);
     assert.equal(socket.closed,true);
     assert.equal(live.active,false);
+    assert.equal(live.sendVideoFrame(),false);
     assert.equal(states.at(-1),'Off');
   }finally{
     for(const [key,value] of Object.entries(prior)){
