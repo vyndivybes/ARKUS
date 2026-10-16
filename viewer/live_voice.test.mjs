@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {LIVE_ENDPOINT,liveUrl,setupMessage,floatToPcm16,pcm16ToFloat,parseLiveMessage,createLiveVoice} from './live_voice.js';
+import {LIVE_ENDPOINT,liveUrl,setupMessage,floatToPcm16,pcm16ToFloat,parseLiveMessage,cameraMessage,createLiveVoice} from './live_voice.js';
 
 test('only constrained Live WebSocket endpoint receives the ephemeral token',()=>{
   assert.match(liveUrl('auth_tokens/abc1234'),/BidiGenerateContentConstrained\?access_token=auth_tokens%2Fabc1234$/);
@@ -99,4 +99,38 @@ test('consented Live session connects, streams PCM and stops all microphone trac
       else globalThis[key]=value;
     }
   }
+});
+
+test('camera frames use the Gemini Live JPEG realtimeInput protocol and reject unsafe data',()=>{
+  const jpeg='data:image/jpeg;base64,/9j/4AAQ';
+  assert.deepEqual(cameraMessage(jpeg),{realtimeInput:{video:{mimeType:'image/jpeg',data:'/9j/4AAQ'}}});
+  assert.throws(()=>cameraMessage('data:image/png;base64,AAAA'));
+  assert.throws(()=>cameraMessage('https://example.com/photo.jpg'));
+  assert.throws(()=>cameraMessage('data:image/jpeg;base64,not valid'));
+  assert.throws(()=>cameraMessage('data:image/jpeg;base64,'+'A'.repeat(900001)));
+});
+
+test('camera is never sent before opt-in and stops with the live session', async()=>{
+  const oldSocket=globalThis.WebSocket;
+  let sent=[];
+  class FakeSocket {
+    static OPEN=1;
+    readyState=1;
+    bufferedAmount=0;
+    send(data){sent.push(JSON.parse(data));}
+    close(){this.readyState=3;}
+  }
+  try{
+    globalThis.WebSocket=FakeSocket;
+    let visible=false;
+    const session=createLiveVoice({
+      getToken:async()=>{throw Error('not called in isolated camera test')},
+      getCameraFrame:()=>visible?'data:image/jpeg;base64,/9j/4AAQ':null
+    });
+    assert.equal(session.sendVideoFrame(),false);
+    // No microphone, video or provider connection is started by merely declaring a camera source.
+    assert.equal(sent.length,0);
+    session.stop();
+    assert.equal(session.sendVideoFrame(),false);
+  }finally{globalThis.WebSocket=oldSocket;}
 });
