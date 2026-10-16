@@ -33,3 +33,10 @@
 #handCursor[data-hand=grab]{border-color:#f1d5a2;background:#aa834a4a}
 #handCursor[data-hand=release]{border-color:#d1f4f2;background:transparent}
 @media(prefers-reduced-motion:reduce){#handCursor{transition:none}}
+
+/* Read-only approved research queue: compact evidence, legible in the settings pane. */
+#researchPlanUrls{display:block;width:100%;min-height:84px;resize:vertical;margin-top:7px;background:#08191d;color:#e0efee;border:1px solid var(--border);border-radius:8px;padding:10px;font:11px/1.5 ui-monospace,Consolas,monospace;overflow-wrap:anywhere}
+#researchPlanResults{max-height:290px;overflow-y:auto;display:grid;gap:8px;margin-top:10px}
+#researchPlanResults .workflow-card{min-width:0}
+#researchPlanResults .workflow-card p{overflow-wrap:anywhere}
+#researchPlanResults .research-excerpt{max-height:160px;overflow:auto;margin:0;white-space:pre-wrap;overflow-wrap:anywhere}

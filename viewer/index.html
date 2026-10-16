@@ -46,7 +46,11 @@
 <label>Reference URL<input id="researchUrl" placeholder="https://en.wikipedia.org/wiki/Bicycle" value="https://en.wikipedia.org/wiki/Bicycle"></label>
 <div class="row"><button type="button" id="researchOpen">Open page</button><button type="button" id="researchRead" class="secondary">Read page text</button><button type="button" id="researchClose" class="secondary">Close</button></div>
 <label>Research Wikipedia topic<input id="researchTopic" maxlength="120" placeholder="Composite bicycle frame"></label><button id="researchSearch" type="button">Search and read public article</button><label>Find on page<input id="researchQuery" maxlength="120" placeholder="Bicycle frame"></label><button type="button" id="researchFind" class="secondary">Find matches</button>
-<div id="researchLinks" class="workflow-list"></div>
+<div class="workflow-card"><h4>Approved research plan</h4><p>Queue 1–5 public reference URLs. ARKUS asks permission for each step, then opens and extracts text in its isolated read-only browser. No forms, account sign-ins or automatic clicking.</p>
+<label>URLs (one per line)<textarea id="researchPlanUrls" rows="3" maxlength="6500" placeholder="https://docs.python.org/3/&#10;https://developer.mozilla.org/en-US/"></textarea></label>
+<div class="row"><button type="button" id="researchPlanCreate">Prepare plan</button><button type="button" id="researchPlanNext" disabled>Approve next page</button><button type="button" class="secondary" id="researchPlanCancel">Clear plan</button></div>
+<p id="researchPlanStatus" role="status" class="hint">No research plan. Each step requires explicit approval.</p><div id="researchPlanResults" class="workflow-list"></div>
+</div><div id="researchLinks" class="workflow-list"></div>
 <pre id="researchResult" style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:180px;overflow:auto">No research page open.</pre>
 </section><section><h3>Local 3D mesh workshop</h3>
 <p>Create and export basic STL primitives, inspired by ADA's CAD concept, without installing Python CAD packages. Not a validated parametric bicycle model.</p>

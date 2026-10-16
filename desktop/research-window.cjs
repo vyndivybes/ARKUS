@@ -1,8 +1,8 @@
 'use strict';
 const {BrowserWindow,session}=require('electron');
-const {safeUrl,shortText,normalizeQuery,safeLinks}=require('./research-utils.cjs');
+const {safeUrl,shortText,normalizeQuery,safeLinks,requireApprovedResearchHost}=require('./research-utils.cjs');
 function createResearchWindow(owner){
- let window=null;
+ let window=null,reviewBusy=false,reviewHost=null;
  const partition='arkus-public-research';
  const researchSession=session.fromPartition(partition,{cache:false});
  researchSession.setPermissionRequestHandler((_wc,_permission,callback)=>callback(false));
@@ -11,10 +11,26 @@ function createResearchWindow(owner){
  // Block unapproved cross-host requests and scheme navigations, including redirects.
  researchSession.webRequest.onBeforeRequest((details,callback)=>{
    if(!['GET','HEAD'].includes(details.method)||!details.url.startsWith('https://'))return callback({cancel:true});
-   try{safeUrl(details.url);callback({cancel:false});}
-   catch{callback({cancel:true});}
+   try{
+     const checked=safeUrl(details.url);
+     if(reviewHost&&details.resourceType==='mainFrame'&&new URL(checked).hostname!==reviewHost)
+       return callback({cancel:true});
+     callback({cancel:false});
+   }catch{callback({cancel:true});}
  });
- async function perform(action,value){
+ async function perform(action,value,internal=false){
+  if(reviewBusy&&!internal)throw Error('Research review in progress.');
+  if(action==='review'){
+   const url=safeUrl(value);
+   reviewBusy=true;reviewHost=new URL(url).hostname;
+   try{
+    await perform('open',url,true);
+    requireApprovedResearchHost(url,window.webContents.getURL());
+    const result=await perform('read',undefined,true);
+    requireApprovedResearchHost(url,result.url);
+    return result;
+   }finally{reviewBusy=false;reviewHost=null;}
+  }
   if(action==='close'){if(window&&!window.isDestroyed())window.close();window=null;return {status:'closed'};}
   if(action==='search'){
    const query=normalizeQuery(value);

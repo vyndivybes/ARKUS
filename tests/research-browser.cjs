@@ -17,6 +17,19 @@ const {_electron}=require('playwright'),fs=require('node:fs'),os=require('node:o
   if(await page.locator('#researchLinks button').count()!==1)throw Error('Unapproved link exposed');
   await page.locator('#researchLinks button').click();
   await page.waitForFunction(()=>document.getElementById('researchResult').textContent.includes('library/math.html'));
+  // Stage 3: a bounded research plan must review only after each explicit approval.
+  await page.locator('#researchPlanUrls').fill('https://docs.python.org/3/\nhttps://en.wikipedia.org/wiki/Bicycle');
+  await page.locator('#researchPlanCreate').click();
+  await page.locator('#researchPlanStatus').filter({hasText:'0 of 2 reviewed'}).waitFor();
+  await page.locator('#researchPlanNext').click();
+  await page.locator('#researchPlanStatus').filter({hasText:'1 of 2 reviewed'}).waitFor();
+  if(await page.locator('#researchPlanResults .workflow-card').count()!==1)throw Error('Research step failed to store exactly one result');
+  await page.locator('#researchPlanNext').click();
+  await page.locator('#researchPlanStatus').filter({hasText:'Research plan complete'}).waitFor();
+  if(await page.locator('#researchPlanResults .workflow-card').count()!==2)throw Error('Research queue did not honor per-step approvals');
+  if(!await page.locator('#researchPlanResults').textContent().then(s=>s.includes('Fixture source text')))throw Error('Read-only research evidence not displayed');
+  await page.locator('#researchPlanCancel').click();
+  if(await page.locator('#researchPlanResults .workflow-card').count()!==0)throw Error('Cancelled plan retained stale results');
   await page.locator('#researchClose').click();await page.locator('#researchResult').filter({hasText:'closed'}).waitFor();
   if(errors.length)throw Error(errors.join('\n'));
   console.log('Real Electron research open/read/allowed-link navigation/close PASS; unapproved links absent; renderer errors 0. Public page supplied by local fixture; no external site or device acceptance claimed.');
