@@ -131,6 +131,24 @@ class App:
             except ProjectError as exc:
                 raise UserError(str(exc), 409) from None
 
+    def list_project_drafts(self):
+        try:
+            return self.projects.list_drafts()
+        except ProjectError as exc:
+            raise UserError(str(exc),409) from None
+
+    def read_project_draft(self,name):
+        try:
+            return self.projects.read_draft(name)
+        except ProjectError as exc:
+            raise UserError(str(exc),409) from None
+
+    def write_project_draft(self,name,content,approved=False,replace=False):
+        try:
+            return self.projects.write_draft(name,content,approved,replace)
+        except ProjectError as exc:
+            raise UserError(str(exc),409) from None
+
     def clear_chat_history(self):
         with self.lock:
             try:
@@ -829,6 +847,13 @@ class Handler(BaseHTTPRequestHandler):
                 result = self.app.live_tool(body.get("name"), body.get("arguments"))
             elif path == '/live/history':
                 result = self.app.record_live_exchange(body.get("user"), body.get("assistant"))
+            elif path == '/workspace/files':
+                result = self.app.list_project_drafts()
+            elif path == '/workspace/read':
+                result = self.app.read_project_draft(body.get("name"))
+            elif path == '/workspace/write':
+                result = self.app.write_project_draft(body.get("name"),body.get("content"),
+                                                      body.get("approved"),body.get("replace",False))
             elif path == '/knowledge/import':
                 result=self.app.knowledge_import(body.get("name"),body.get("data"))
             elif path == '/knowledge/remove':
