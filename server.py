@@ -26,6 +26,7 @@ from companion import CAPABILITIES, CompanionWorkflows, WorkflowError
 from cad_shapes import GeometryError, generate as generate_stl
 from backup import BackupError, export_backup
 from skill_forge import SkillForge, SkillError
+from gemini_adapter import GeminiAdapter, GeminiError
 
 # PERSONA: edit this single block to change ARKUS's character.
 PERSONA = """You are ARKUS, a dry, impeccably polite British butler. Occasionally say sir.
@@ -38,7 +39,7 @@ settles there. Browser mode cannot identify active apps or external tabs. Focus 
 not an OS security lock. Screen and camera require explicit consent; cloud vision sends one frame.
 Distraction names may be spoken momentarily and are never written into notes or the ledger.
 """
-PROVIDERS = {'openai': 'https://api.openai.com/v1', 'openrouter': 'https://openrouter.ai/api/v1', 'ollama': 'http://127.0.0.1:11434/v1'}
+PROVIDERS = {'openai': 'https://api.openai.com/v1', 'openrouter': 'https://openrouter.ai/api/v1', 'ollama': 'http://127.0.0.1:11434/v1', 'gemini': 'https://generativelanguage.googleapis.com/v1beta'}
 MAX_BODY = 3_000_000
 MAX_IMAGE = 2_000_000
 MAX_QUESTION = 4000
@@ -267,6 +268,16 @@ class App:
             raise UserError('Provider could not be reached or returned an invalid response. No answer was fabricated.', 502) from None
 
     def models(self, refresh=False):
+        if self.provider == 'gemini':
+            try:
+                ids = GeminiAdapter(self.key).models()
+            except GeminiError as exc:
+                raise UserError(str(exc), 502) from None
+            self.catalog = {name: {"id": name, "pricing": None} for name in ids}
+            return {"models": [{"id": name, "name": name,
+                                "verified": name in self.verified,
+                                "pricing": None, "vision": False} for name in ids],
+                    "aliases": self.config.get("aliases", {})}
         if self.provider == 'offline':
             return {'models': [{'id': 'offline', 'name': 'Offline note search', 'verified': True, 'pricing': {'prompt': '0', 'completion': '0'}}], 'aliases': {'offline': 'offline'}}
         if refresh or not self.catalog:
@@ -278,6 +289,12 @@ class App:
 
     def permit_cost(self, model):
         if self.provider == 'ollama':
+            return
+        if self.provider == 'gemini':
+            # Key existence does not imply free usage: require explicit permission
+            # for pricing-unknown Gemini models rather than silently billing.
+            if not self.config.get('allow_paid_models', False):
+                raise UserError('Gemini model pricing is not verified as free. Local policy blocks API calls unless allow_paid_models is enabled.', 409)
             return
         metadata = self.catalog.get(model, {})
         prices = metadata.get('pricing', {})
@@ -291,6 +308,11 @@ class App:
     def completion(self, messages, model=None):
         model = model or self.model
         self.permit_cost(model)
+        if self.provider == 'gemini':
+            try:
+                return GeminiAdapter(self.key).complete(model, messages)
+            except GeminiError as exc:
+                raise UserError(str(exc), 502) from None
         response = self.remote('/chat/completions', {'model': model, 'messages': messages, 'max_tokens': 350})
         try:
             answer = response['choices'][0]['message']['content']
