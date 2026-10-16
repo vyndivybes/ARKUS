@@ -11,7 +11,8 @@ import zipfile
 from pathlib import Path, PurePosixPath
 
 MAX_FILE = 2_000_000
-MAX_ARCHIVE = 20_000_000
+MAX_KNOWLEDGE_DB = 32_000_000
+MAX_ARCHIVE = 40_000_000
 MAX_ENTRIES = 2000
 NAME = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
 
@@ -23,6 +24,9 @@ class BackupError(ValueError):
 def _supported(name):
     pieces = PurePosixPath(name).parts
     if name == "projects.json":
+        return True
+    if (len(pieces)==3 and pieces[0]=="knowledge" and NAME.fullmatch(pieces[1])
+            and pieces[2]=="sources.sqlite3"):
         return True
     if len(pieces) in (2, 3) and pieces[0] == "notes":
         if len(pieces) == 3 and pieces[1] != "captures":
@@ -66,7 +70,7 @@ def export_backup(data_dir, archive_path):
             if not _supported(rel):
                 continue
             size = path.stat().st_size
-            if size > MAX_FILE:
+            if size > (MAX_KNOWLEDGE_DB if rel.startswith('knowledge/') else MAX_FILE):
                 raise BackupError("Local data file exceeds per-file backup limit.")
             entries[rel] = path.read_bytes()
             if len(entries) > MAX_ENTRIES or sum(map(len, entries.values())) > MAX_ARCHIVE:
@@ -123,7 +127,7 @@ def restore_backup(archive_path, destination_dir, allow_nonempty=False):
                 raise BackupError("Unsafe or unsupported archive path.")
             if (item.external_attr >> 16) & 0o170000 == 0o120000:
                 raise BackupError("Archive contains symbolic links.")
-            if item.file_size > MAX_FILE:
+            if item.file_size > (MAX_KNOWLEDGE_DB if name.startswith('knowledge/') else MAX_FILE):
                 raise BackupError("Archive entry exceeds its size limit.")
             total += item.file_size
             if total > MAX_ARCHIVE:

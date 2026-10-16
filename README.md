@@ -167,3 +167,23 @@ These features remain opt-in. Full ADA V2 parity—including autonomous web acti
 **3D CAD preview:** Use **Preview 3D assembly** in the editable CAD section to rotate and zoom a local Three.js scene built from the editable JSON parameters before export. The preview has no inference, cloud cost, Boolean mesh union or structural validation.
 
 **One-click reference lookup:** Type a public Wikipedia topic into the Research Browser and select **Search and read public article**. ARKUS opens the approved public URL in its separate local window and extracts a short page text preview. It never sends the page to an AI model automatically or executes forms. This is bounded scripted lookup rather than full autonomous web browsing.
+
+## ARKUS v0.8: Knowledge & Intelligence Engine
+
+**Document-backed offline knowledge.** Settings → Project knowledge base imports one explicitly selected TXT, Markdown, DOCX or text-based PDF up to 2 MB. Each project gets an isolated SQLite FTS5 database with chunked full-text retrieval, a list of sources, removal controls and references attached to responses from imported documents. Maximum 50 documents per project. Both the document text and its index remain on the local machine; source snippets leave the machine **only if** a configured cloud LLM is invoked to answer a question. PDFs that contain only scans require OCR and are not supported. The Windows EXE includes the checksum-verified open-source `pypdf` 6.0.0 parser (BSD-3-Clause). For source checkout, install `pypdf==6.0.0` separately if you want to index text PDFs.
+
+**Google Search grounding.** Settings → Online Google Search grounding offers an explicit paid-cost-consent search, returning Google's text response and attributed public HTTPS sources (when the provider returns citations). Add `"provider":"gemini"`, `"api_key":"YOUR_PRIVATE_KEY"`, `"enable_google_search":true`, and `"allow_paid_models":true` in your local config (never commit a credential). This is **off by default** because API calls and grounding may incur charges or have quotas. Web search is never silently triggered by an ordinary question.
+
+**Ollama/local models.** Existing `"provider":"ollama"` integration remains available as the optional no-key local reasoning backend. It does not bundle or download a model or guarantee your machine can run one. Without a provider, imported documents remain searchable offline.
+
+**MCP client foundation (modern stateless HTTP 2026-07-28).** In the local config, for example:
+```json
+"mcp_servers": [
+  {"name":"local","url":"http://127.0.0.1:7800/mcp","enabled":true,"allow_tools":["search_notes"]}
+]
+```
+Settings → Local MCP tools discovers only server-advertised `readOnlyHint:true` tools that are explicitly allowlisted; the user must approve each invocation with displayed JSON parameters. Remote URLs, redirects, STDIO processes, unapproved/write tools and automatic model-chosen execution are not supported. MCP response transport supports bounded JSON only, not streaming SSE, remote OAuth or unrestricted agents. For tools with side effects despite `readOnlyHint`, do not approve the server until you trust its implementation. This is a controlled MCP client subset, **not** the general Claude Desktop plugin ecosystem.
+
+**Current limitations.** This is full-text retrieval, not vector-semantic embeddings or a general folder watcher. External web results are not added to local knowledge automatically. Engineering files such as native CAD, STEP and scanned PDFs still need dedicated parsers. The Windows preview is unsigned; no automatic software upgrades are enabled.
+
+**Backup:** Existing ARKUS ZIP snapshot/restore now includes project knowledge SQLite databases as local data (up to 32 MB per database, 40 MB total archive). Credentials are still excluded. Restore remains restricted to an empty destination. If an archive exceeds these bounds, backup refuses rather than silently discarding knowledge.

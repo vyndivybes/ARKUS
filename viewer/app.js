@@ -107,6 +107,7 @@ async function activateProject(path,payload){
   await loadSkills();
   await loadActions();
   await loadCADModels();
+  await loadKnowledge();
   restoreConversation(result.history);
   $('search').value='';renderNotes();
   toast('Workspace active: '+$('activeProject').selectedOptions[0]?.textContent);
@@ -167,6 +168,86 @@ async function refreshWorkflows(announce=true){
       }
     }
   }catch(e){$('workflowPlans').textContent='Local workflows unavailable: '+e.message;}
+}
+async function loadKnowledge(){
+  const root=$('knowledgeFiles');root.replaceChildren();
+  try{
+    const result=await api('/knowledge/list');
+    if(!result.documents.length){root.textContent='No imported documents in this project.';return;}
+    for(const doc of result.documents){
+      const card=document.createElement('div');card.className='workflow-card';
+      const info=document.createElement('span');info.textContent=doc.name+' · '+doc.characters+' characters';
+      const del=document.createElement('button');del.className='secondary';del.textContent='Remove';
+      del.addEventListener('click',async()=>{
+        if(!confirm('Remove indexed document '+doc.name+' from this project?'))return;
+        try{await api('/knowledge/remove',{id:doc.id});await loadKnowledge();toast('Document removed from index.');}
+        catch(e){toast(e.message);}
+      });
+      card.append(info,del);root.append(card);
+    }
+  }catch(e){root.textContent=e.message;}
+}
+function renderDocumentReferences(documents){
+  if(!Array.isArray(documents)||!documents.length)return;
+  const target=$('messages').lastElementChild;
+  if(!target)return;
+  const refs=document.createElement('div');refs.className='source-links';
+  for(const doc of documents){
+    const b=document.createElement('button');b.textContent='Document: '+doc.title;
+    b.title=doc.excerpt;b.addEventListener('click',()=>{
+      $('settings').hidden=false;
+      $('knowledgeResults').textContent=doc.title+'\n\n'+doc.excerpt;
+    });
+    refs.append(b);
+  }
+  target.append(refs);
+}
+function renderWebReferences(sources){
+  if(!Array.isArray(sources)||!sources.length)return;
+  const target=$('messages').lastElementChild;
+  if(!target)return;
+  const refs=document.createElement('div');refs.className='source-links';
+  for(const item of sources){
+    const link=document.createElement('a');
+    link.textContent=item.title+' (source)';
+    link.href=item.url;link.target='_blank';link.rel='noopener noreferrer';
+    refs.append(link);
+  }
+  target.append(refs);
+}
+async function loadMCP(){
+  const root=$('mcpServerList');root.replaceChildren();
+  try{
+    const {servers}=await api('/mcp/servers');
+    if(!servers.length){root.textContent='No local MCP endpoints configured.';return;}
+    for(const server of servers){
+      const card=document.createElement('div');card.className='workflow-card';
+      const name=document.createElement('strong');name.textContent=server.name+(server.enabled?' · enabled':' · disabled');card.append(name);
+      if(server.enabled){
+        const discover=document.createElement('button');discover.textContent='Discover read-only tools';
+        discover.addEventListener('click',async()=>{
+          try{
+            const {tools}=await api('/mcp/discover',{name:server.name});
+            if(!tools.length){$('mcpOutput').textContent='No approved read-only tools available.';return;}
+            for(const tool of tools){
+              const call=document.createElement('button');call.textContent='Request '+tool.name;
+              call.addEventListener('click',async()=>{
+                try{
+                  const argumentsValue=JSON.parse($('mcpArgs').value);
+                  if(!argumentsValue||Array.isArray(argumentsValue)||typeof argumentsValue!=='object')throw Error('MCP arguments must be a JSON object.');
+                  if(!confirm('Execute local read-only MCP tool '+server.name+'/'+tool.name+' once with the displayed JSON arguments?'))return;
+                  const data=await api('/mcp/call',{name:server.name,tool:tool.name,arguments:argumentsValue,approved:true});
+                  $('mcpOutput').textContent=JSON.stringify(data,null,2).slice(0,6000);
+                }catch(e){$('mcpOutput').textContent=e.message;}
+              });card.append(call);
+            }
+            discover.disabled=true;
+          }catch(e){$('mcpOutput').textContent=e.message;}
+        });card.append(discover);
+      }
+      root.append(card);
+    }
+  }catch(e){root.textContent=e.message;}
 }
 async function loadCADModels(){
   const host=$('cadModels');host.replaceChildren();
@@ -344,7 +425,9 @@ async function submit(text){
   try{if(await command(text))return;const capture=/^(?:remember that|note to self|don't let me forget|log this)\b[,:]?\s*/i;const remembering=capture.test(text);const result=await api(remembering?'/remember':'/chat',remembering?{text:text.replace(capture,'')}:{question:text});
     if(remembering){await refreshGraph(result.graph);const ids=result.nodes || (result.node?[result.node.id]:[]);const node=graph.nodes.find(n=>n.id===ids[0]);if(node)sceneView?.pulse(node.id);showSources('notes',ids);}
     else showSources(result.kind,result.nodes || []);
-    addMessage(result.answer || 'The server returned no answer.','assistant',result.nodes || []);speak(result.answer || 'No answer was returned, sir.');
+    addMessage(result.answer || 'The server returned no answer.','assistant',result.nodes || []);
+    renderDocumentReferences(result.document_sources);
+    speak(result.answer || 'No answer was returned, sir.');
   }catch(error){addMessage(error.message,'error');speak(error.message);}finally{busy=false;status(listening?'Listening':'Awaiting your next thought');}
 }
 function setupSpeech(){
@@ -619,10 +702,46 @@ $('cadExport').addEventListener('click',async()=>{
     $('cadAssemblyStatus').textContent=result.triangles+' triangles in STL · revision '+result.revision+'.';
   }catch(error){toast(error.message);}
 });
+$('knowledgeImport').addEventListener('click',async()=>{
+  const file=$('knowledgeFile').files?.[0];
+  if(!file){toast('Select a TXT, Markdown, DOCX or supported text PDF.');return;}
+  if(!file.size||file.size>2_000_000){toast('Document must be smaller than 2 MB.');return;}
+  try{
+    const bytes=new Uint8Array(await file.arrayBuffer());let raw='';
+    for(let i=0;i<bytes.length;i+=8192)raw+=String.fromCharCode(...bytes.subarray(i,i+8192));
+    const result=await api('/knowledge/import',{name:file.name,data:btoa(raw)});
+    toast('Indexed '+result.name+' in '+result.chunks+' passage(s).');
+    $('knowledgeFile').value='';await loadKnowledge();
+  }catch(e){toast('Import failed: '+e.message);}
+});
+$('knowledgeSearch').addEventListener('click',async()=>{
+  const target=$('knowledgeResults');target.replaceChildren();
+  try{
+    const {sources}=await api('/knowledge/search',{query:$('knowledgeQuery').value});
+    if(!sources.length){target.textContent='No indexed passages matched.';return;}
+    for(const source of sources){
+      const card=document.createElement('div');card.className='workflow-card';
+      const title=document.createElement('strong');title.textContent=source.title;
+      const p=document.createElement('p');p.textContent=source.excerpt;
+      card.append(title,p);target.append(card);
+    }
+  }catch(e){target.textContent=e.message;}
+});
+$('groundedSearch').addEventListener('click',async()=>{
+  const question=$('groundedQuery').value.trim();
+  if(!question){toast('Enter a public web question.');return;}
+  if(!confirm('Search Google with Gemini? Your question leaves this device and this request may incur API charges.'))return;
+  $('groundedStatus').textContent='Searching with configured Gemini provider…';
+  try{
+    const result=await api('/web/search',{question});
+    addMessage(question,'user');addMessage(result.answer,'assistant');renderWebReferences(result.sources);
+    $('groundedStatus').textContent=result.grounded?'Grounded result with '+result.sources.length+' web sources.':'Google returned no source citations; verify the answer independently.';
+  }catch(e){$('groundedStatus').textContent=e.message;}
+});
 addEventListener('pagehide',()=>{cadPreviewSession?.close();liveVoice?.stop();stopScreen();stopCamera();stopListening();stopSpeech();});
 setupSpeech();
 
-await Promise.allSettled([refreshGraph(),loadModels(),refreshFocus(),diagnostics(),loadProjects(),loadCapabilities(),loadSkills(),loadActions(),loadCADModels()]);
+await Promise.allSettled([refreshGraph(),loadModels(),refreshFocus(),diagnostics(),loadProjects(),loadCapabilities(),loadSkills(),loadActions(),loadCADModels(),loadKnowledge(),loadMCP()]);
 await refreshWorkflows(false);
 try{const history=await api('/projects/history');restoreConversation(history.messages || []);}catch(e){toast('Project history unavailable: '+e.message);}
 const hour=new Date().getHours();$('greeting').textContent=`Good ${hour<12?'morning':hour<17?'afternoon':'evening'}, sir. ${graph.nodes.length} notes indexed, all present and accounted for. What shall we explore?`;
