@@ -229,3 +229,14 @@ The primary microphone button now routes to Gemini Live when browser speech reco
 ## Gemini Live HTTP 400 diagnostics
 
 A banner such as **Gemini · KEY LOADED** confirms only that a private key exists; it does not prove a successful Google API request. If LIVE reports **HTTP 400**, Google has rejected the server-side `/v1beta/auth_tokens` request **before the microphone can stream**. ARKUS now reports only the safe Google error-status code (for example `INVALID_ARGUMENT`), never the provider's raw error body or the secret key. Check that `%APPDATA%\\arkus\\config.json` contains a Gemini *API key*, not a Google Calendar OAuth client ID. For a modern compatible Live model use `"live_model":"gemini-3.8-live"`; save and fully restart the Windows app. The normal `"model"` key selects a separate text generation model. A legacy/new-format key issue was previously reported to Google and marked resolved in May 2026; do not infer key incompatibility solely from a 400. Use Google AI Studio to confirm the project's key restrictions and model access. No automatic fallback to unconstrained tokens or exposing a permanent key to the browser is permitted. Gemini Live may incur charges.
+
+
+## Opt-in workaround for Google HTTP 400 on Live token constraints
+
+If Google successfully issues `{"uses":1}` tokens but rejects all `liveConnectConstraints` requests with HTTP 400, there is a **separate, explicitly opt-in** setting:
+
+```json
+"allow_unconstrained_live_token": true
+```
+
+The default is **false**. With the switch enabled, ARKUS first attempts its constrained token as before. **Only** if Google returns HTTP 400 will it retry **once** with the Google-documented basic one-use Live token. The initial new-session deadline stays at 55 seconds and the token expires after 25 minutes. ARKUS still uses your configured `live_model`, keeps the permanent Google API key solely in the local Python backend and requires existing paid-model permission. This does **not** give remote sites general credentials or authorize unrestricted automation; however, unlike the constrained token, **the basic token is not model-locked** and could be misused during its brief validity if extracted from the client. Enable this only on your trusted private Windows computer; disable it afterward if the provider fixes constrained token support. A successful token request is not proof that Google's Live WebSocket will accept the model or return speech. Explicit user consent is still required for microphone access.

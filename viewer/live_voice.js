@@ -264,6 +264,7 @@ export function createLiveVoice({getToken,getCameraFrame=()=>null,callTool=async
       update('Connecting Gemini Live…');
       const credential=await getToken();
       if(session!==current)return;
+      if(credential.scope==='basic-one-use') update('Connecting with explicitly enabled basic one-use token…');
       const socket=new WebSocket(liveUrl(credential.token));
       ws=socket;socket.binaryType='arraybuffer';
       socket.onopen=()=>{if(session===current)socket.send(JSON.stringify(setupMessage(credential.model)));};
