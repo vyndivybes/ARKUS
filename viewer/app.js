@@ -326,8 +326,8 @@ const researchQueue=createResearchQueue({
     return native('review',url);
   },
   approve:async(url,step,total)=>window.confirm(
-    'Approve read-only research step '+step+' of '+total+'?\\n\\n'+url+
-    '\\n\\nARKUS will open this public site and extract a bounded text excerpt in its isolated browser. No forms or accounts will be used.'
+    'Approve read-only research step '+step+' of '+total+'?\n\n'+url+
+    '\n\nARKUS will open this public site and extract a bounded text excerpt in its isolated browser. No forms or accounts will be used.'
   ),
   onUpdate:snapshot=>{
     $('researchPlanNext').disabled=snapshot.status!=='ready';
