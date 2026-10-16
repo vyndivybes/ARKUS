@@ -24,6 +24,7 @@ from focus import Focus
 from projects import ProjectError, ProjectStore
 from companion import CAPABILITIES, CompanionWorkflows, WorkflowError
 from cad_shapes import GeometryError, generate as generate_stl
+from backup import BackupError, export_backup
 
 # PERSONA: edit this single block to change ARKUS's character.
 PERSONA = """You are ARKUS, a dry, impeccably polite British butler. Occasionally say sir.
@@ -123,6 +124,24 @@ class App:
             return generate_stl(shape, dimensions)
         except GeometryError as exc:
             raise UserError(str(exc), 409) from None
+
+    def backup_projects(self):
+        """Export allowlisted project memory to a separate local backups folder."""
+        with self.lock:
+            filename = "ARKUS-data-" + datetime.now().strftime("%Y%m%d-%H%M%S") + "-" + secrets.token_hex(3) + ".zip"
+            target = self.data.parent / "ARKUS-Backups" / filename
+            try:
+                return export_backup(self.data, target)
+            except BackupError as exc:
+                raise UserError(str(exc), 409) from None
+
+    def due_all_projects(self):
+        with self.lock:
+            try:
+                ids = [item["id"] for item in self.projects.state()["projects"]]
+                return {"due": self.companion.due_across(ids)}
+            except WorkflowError as exc:
+                raise UserError(str(exc), 409) from None
 
     def workflows_state(self):
         with self.lock:
@@ -412,6 +431,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, self.app.projects.state())
             if path == '/projects/history':
                 return self.send(200, {'messages': self.app.projects.read_history()})
+            if path == '/workflow/due-all':
+                return self.send(200, self.app.due_all_projects())
             if path == '/workflow/state':
                 return self.send(200, self.app.workflows_state())
             if path == '/workflow/briefing':
@@ -494,6 +515,8 @@ class Handler(BaseHTTPRequestHandler):
                 result = self.app.focus.command(path.split('/')[-1], body)
             elif path == '/cad/primitive':
                 result = self.app.generate_offline_cad(body.get('shape'), body.get('dimensions'))
+            elif path == '/backup/create':
+                result = self.app.backup_projects()
             elif path == '/workflow/plan':
                 result = self.app.create_workflow_plan(body.get('goal'), body.get('steps'))
             elif path == '/workflow/advance':

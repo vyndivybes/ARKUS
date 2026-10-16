@@ -87,6 +87,22 @@ class CompanionWorkflows:
                         "source": "local_project_records_only",
                         "external_data": "not_connected"}}
 
+    def due_across(self, project_ids, now=None):
+        """Read unacknowledged due reminders from known local projects only."""
+        now = now or datetime.now()
+        if not isinstance(project_ids, (list, tuple)) or len(project_ids) > 24:
+            raise WorkflowError("Select up to 24 local project identities.")
+        seen = set()
+        due = []
+        with self.lock:
+            for project_id in project_ids:
+                if project_id in seen:
+                    continue
+                seen.add(project_id)
+                for item in self.snapshot(project_id, now)["due"]:
+                    due.append({"project": project_id, **item})
+        return sorted(due, key=lambda item: (item["when"], item["project"], item["id"]))
+
     def create_plan(self, project, goal, steps):
         if not isinstance(goal, str) or not 1 <= len(goal.strip()) <= 200:
             raise WorkflowError("Plan goal must contain 1–200 characters.")

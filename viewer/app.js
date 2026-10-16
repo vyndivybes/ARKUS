@@ -146,11 +146,12 @@ async function refreshWorkflows(announce=true){
       });item.append(line,button);reminders.append(item);
     }
     if(announce){
-      for(const due of state.due){
-        const fingerprint=state.project+':'+due.id;
+      const across=await api('/workflow/due-all');
+      for(const due of across.due || []){
+        const fingerprint=due.project+':'+due.id;
         if(announcedDue.has(fingerprint))continue;
         announcedDue.add(fingerprint);
-        const alertText='Reminder: '+due.message;
+        const alertText='Reminder ('+due.project+'): '+due.message;
         toast(alertText);speak(alertText);
         if('Notification' in window && Notification.permission==='granted'){
           try{new Notification('ARKUS project reminder',{body:due.message,tag:'arkus-'+due.id});}catch{/* Notification is optional. */}
@@ -326,6 +327,16 @@ $('openProject').addEventListener('click',async()=>{try{await activateProject('/
 $('createProject').addEventListener('click',async()=>{
   const name=$('newProject').value.trim();if(!name){toast('Enter a project name.');return;}
   try{await activateProject('/projects/create',{name});$('newProject').value='';}catch(e){toast(e.message);}
+});
+$('backupProjects').addEventListener('click',async()=>{
+  const el=$('backupStatus');
+  if(!window.confirm('Create a local backup of notes, project conversations, plans and reminders? API keys will NOT be included.'))return;
+  el.textContent='Creating local backup…';
+  try{
+    const b=await api('/backup/create',{});
+    el.textContent=`Backup verified: ${b.files} files at ${b.archive}. API credentials excluded. Store an additional copy outside the laptop.`;
+    toast('Backup created on this computer.');
+  }catch(e){el.textContent='Backup not completed: '+e.message;toast(e.message);}
 });
 $('clearProjectChat').addEventListener('click',async()=>{
   if(!window.confirm('Clear stored conversation in this project? Notes will not be changed.'))return;

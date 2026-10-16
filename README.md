@@ -58,6 +58,13 @@ ARKUS provides an opt-in, **offline action-plan and reminder engine** for practi
 
 The preview remains unsigned and free for its local base features. Third-party cloud AI, native voice, CAD, smart-home and hardware capabilities are not supplied free by ARKUS. No integration claims should be made without real testing and explicit hardware/provider setup.
 
+## Local reliability improvement (v0.3.1)
+
+- **Project backup:** System controls → Project workspaces → **Back up all projects**. Saves a timestamped ZIP under a neighboring `ARKUS-Backups` folder, outside ARKUS's live data directory. Includes all allowlisted project metadata, General/project markdown notes including captures, conversations, action plans and reminders. Excludes API credentials, local config, activity ledgers, executables and arbitrary filesystem contents.
+- **Verifiable restore:** Backup ZIP includes a checksum manifest. Restore is manual and only permitted to an **empty directory**, never over existing live data. With Python 3.11+ installed, use `python backup.py restore "path\\to\\archive.zip" "path\\to\\empty-recovery-folder"`. To create manually, use `python backup.py export "path\\to\\ARKUS-userData" "path\\to\\new-backup.zip"`. Protect the archive: notes and chat records are not encrypted.
+- **Cross-project reminders:** While the ARKUS interface remains running, every 30 seconds it polls for due reminders **across all local workspaces**, showing the source project instead of silently missing reminders in inactive workspaces. Optional operating-system/browser notifications require explicit permission. ARKUS still **does not** deliver notifications while the application is closed.
+- **Recovery limitations:** This is a project-data snapshot, not a full Windows disaster-recovery image. No automatic off-device copy, remote sync or credential backup is included. Keep a separate offline copy and verify restoring it before treating ARKUS as a sole recordkeeper.
+
 ## Configure a model privately
 
 Copy `config.example.json` to `config.json` for browser mode, or `%APPDATA%\arkus\config.json` for desktop mode. Both files stay outside the served viewer. Desktop also honors `ARKUS_CONFIG` for another private path. Restart after changing configuration.
