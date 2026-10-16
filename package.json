@@ -1,6 +1,6 @@
 {
   "name": "arkus",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "private": true,
   "description": "Local-first Windows knowledge galaxy and focus companion",
   "main": "desktop/main.cjs",
@@ -12,7 +12,7 @@
     "predist": "node scripts/build-prepare.cjs",
     "start": "python server.py",
     "desktop": "electron .",
-    "test": "python -m unittest discover -s tests -v && node --test viewer/posture.test.mjs viewer/live_voice.test.mjs",
+    "test": "python -m unittest discover -s tests -v && node --test viewer/posture.test.mjs viewer/live_voice.test.mjs viewer/gestures.test.mjs tests/research-utils.test.cjs",
     "preflight": "python preflight.py",
     "pack": "electron-builder --dir",
     "dist": "electron-builder --win portable"
@@ -42,6 +42,7 @@
       "live_tokens.py",
       "action_executor.py",
       "cad_shapes.py",
+      "parametric_cad.py",
       "focus.py",
       "build.py",
       "preflight.py",
