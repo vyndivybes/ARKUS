@@ -12,7 +12,7 @@
     "predist": "node scripts/build-prepare.cjs",
     "start": "python server.py",
     "desktop": "electron .",
-    "test": "python -m unittest discover -s tests -v && node --test viewer/posture.test.mjs viewer/live_voice.test.mjs viewer/live_voice_lifecycle.test.mjs viewer/camera_capture.test.mjs viewer/screen_capture.test.mjs viewer/research_tools.test.mjs viewer/gestures.test.mjs viewer/cad_preview.test.mjs tests/research-utils.test.cjs tests/draft-editor.test.cjs",
+    "test": "python -m unittest discover -s tests -v && node --test viewer/posture.test.mjs viewer/live_voice.test.mjs viewer/live_voice_lifecycle.test.mjs viewer/camera_capture.test.mjs viewer/screen_capture.test.mjs viewer/research_tools.test.mjs viewer/gestures.test.mjs viewer/hand_gestures.test.mjs viewer/cad_preview.test.mjs tests/research-utils.test.cjs tests/draft-editor.test.cjs",
     "preflight": "python preflight.py",
     "pack": "electron-builder --dir",
     "dist": "electron-builder --win portable"
