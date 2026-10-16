@@ -85,6 +85,36 @@ class GeminiAdapter:
             result["systemInstruction"]={"parts":[{"text":"\n".join(system)}]}
         return result
 
+    def grounded(self,model,question):
+        """One explicit Google Search grounding request with returned source URLs."""
+        if not isinstance(model,str) or not re.fullmatch(r"[A-Za-z0-9_.-]{3,100}",model):
+            raise GeminiError("Invalid Gemini search model.")
+        if not isinstance(question,str) or not (2<=len(question.strip())<=500):
+            raise GeminiError("Ask a short factual search question.")
+        payload=self.format_request([{"role":"user","content":question}])
+        payload["tools"]=[{"googleSearch":{}}]
+        response=self._request("/models/"+urllib.parse.quote(model,safe="")+":generateContent",payload)
+        try:
+            candidate=response["candidates"][0]
+            answer="".join(p["text"] for p in candidate["content"]["parts"]
+                           if isinstance(p,dict) and isinstance(p.get("text"),str)).strip()
+            if not answer:raise ValueError()
+            chunks=candidate.get("groundingMetadata",{}).get("groundingChunks",[])
+            sources=[];seen=set()
+            for chunk in chunks[:25]:
+                source=chunk.get("web",{}) if isinstance(chunk,dict) else {}
+                url=source.get("uri")
+                if not isinstance(url,str) or len(url)>1500:continue
+                parsed=urllib.parse.urlsplit(url)
+                if parsed.scheme!="https" or not parsed.hostname or parsed.username or parsed.password:continue
+                if url in seen:continue
+                seen.add(url)
+                sources.append({"url":url,"title":str(source.get("title") or parsed.hostname)[:140]})
+                if len(sources)>=6:break
+            return {"answer":answer,"sources":sources,"kind":"web","grounded":bool(sources)}
+        except (ValueError,TypeError,KeyError,IndexError):
+            raise GeminiError("Google Search returned no usable grounded answer.") from None
+
     def complete(self,model,messages):
         if not isinstance(model,str) or not re.fullmatch(r"[A-Za-z0-9_.-]{3,100}",model):
             raise GeminiError("Invalid model name.")
