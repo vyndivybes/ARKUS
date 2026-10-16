@@ -30,6 +30,12 @@ When a configured and verified language model is accessible, ARKUS now gives **g
 
 If a user has explicitly configured the Gemini provider with **both** `enable_google_search=true` and `allow_paid_models=true`, questions such as **"Search the web for..."**, **"Look up online..."**, or **"latest news..."** automatically use Google Search grounding, preserve the answer in project conversation history and display returned HTTPS source references in the ordinary conversation panel. Without both opt-ins, ARKUS does **not** make an automatic Google call. This feature may incur Google charges and is not enabled by default. Live duplex voice has separate local function tools for notes, local reminders and project briefing; it does not silently inherit the search permission.
 
+## Approved local project file drafts
+
+Project workspaces now have an **editable file workshop** in System controls, for .md, .txt, .json, .csv, .py and .js draft files. ARKUS can list or read these files through the main conversation (for example, "list project files" or "read project file my-plan.md"). Gemini Live can also propose local project files through native function calling, but the user must explicitly approve each write or replacement in the Windows app. Source-code drafts are saved as text only: **they are never executed, deployed, installed or granted access to the operating system**.
+
+Files are isolated under `projects/<project-id>/drafts/`, with bounded names, size and count; absolute paths, traversal and symlinks are refused. Drafts are included in ARKUS's checksum-verified backup and require the same empty-directory restore. This feature implements ADA-inspired controlled file authoring, **not** self-modifying or autonomous software upgrades.
+
 ## Project workspaces and continuity (v0.2.0)
 
 Inspired by ADA V2's project-memory concept, ARKUS now offers **local isolated project workspaces** without importing ADA's broad file-reading or self-executing tools.

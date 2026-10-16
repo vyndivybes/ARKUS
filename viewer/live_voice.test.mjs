@@ -12,7 +12,8 @@ test('setup binds exact model and speech-only modalities with no executable tool
   assert.equal(setup.model,'models/gemini-3.1-flash-live-preview');
   assert.deepEqual(setup.generationConfig.responseModalities,['AUDIO']);
   assert.deepEqual(setup.tools[0].functionDeclarations.map(d=>d.name),[
-    'get_briefing','search_knowledge','remember_note','set_reminder'
+    'get_briefing','search_knowledge','remember_note','set_reminder',
+    'list_project_files','read_project_file','write_project_file'
   ]);
   assert.ok(!JSON.stringify(setup.tools).includes('run_shell'));
   assert.throws(()=>setupMessage('../wrong-model'));

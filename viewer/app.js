@@ -108,6 +108,7 @@ async function activateProject(path,payload){
   await loadActions();
   await loadCADModels();
   await loadKnowledge();
+  await loadDraftFiles();
   restoreConversation(result.history);
   $('search').value='';renderNotes();
   toast('Workspace active: '+$('activeProject').selectedOptions[0]?.textContent);
@@ -168,6 +169,24 @@ async function refreshWorkflows(announce=true){
       }
     }
   }catch(e){$('workflowPlans').textContent='Local workflows unavailable: '+e.message;}
+}
+async function loadDraftFiles(){
+  const root=$('draftFiles');root.replaceChildren();
+  try{
+    const result=await api('/workspace/files',{});
+    if(!result.files?.length){root.textContent='No draft files in this project.';return;}
+    for(const file of result.files){
+      const button=document.createElement('button');button.className='secondary';
+      button.textContent=file.name+' · '+file.bytes+' bytes';
+      button.addEventListener('click',async()=>{
+        try{const data=await api('/workspace/read',{name:file.name});
+          $('draftFilename').value=file.name;$('draftContent').value=data.content;
+          toast('Loaded project draft '+file.name);
+        }catch(e){toast(e.message);}
+      });
+      root.append(button);
+    }
+  }catch(error){root.textContent='Draft files unavailable: '+error.message;}
 }
 async function loadKnowledge(){
   const root=$('knowledgeFiles');root.replaceChildren();
@@ -401,6 +420,18 @@ async function command(text){
     if(!selected)throw new Error('Project not found. Create it in System controls first.');
     await activateProject('/projects/switch',{project:selected.value});return true;
   }
+  if(/^(?:list|show) (?:my |the )?(?:project )?(?:draft )?files[.!]?$/i.test(text)){
+    const result=await api('/workspace/files',{});
+    const answer=result.files.length?'Project files: '+result.files.map(f=>f.name).join(', '):'No draft files in this project.';
+    addMessage(answer);speak(answer);return true;
+  }
+  const draftRead=text.match(/^(?:read|open|show) (?:the )?(?:project )?file ([a-z0-9_.-]+\\.(?:md|txt|py|js|json|csv))[.!]?$/i);
+  if(draftRead){
+    const result=await api('/workspace/read',{name:draftRead[1]});
+    $('draftFilename').value=result.name;$('draftContent').value=result.content;
+    addMessage('Opened local draft '+result.name+'. Its content is in System controls.');
+    $('settings').hidden=false;return true;
+  }
   if(/^(?:stop|wait)[.!]?$/i.test(text)){stopSpeech();status('Paused speaking');return true;}
   if(isRetarget(text)){await focusAction('retarget',{from_card:false});return true;}
   if(/(?:focus (?:for|on)|start (?:a )?focus|(?:give me |let'?s do )?(?:\d+|thirty|twenty(?:[ -]five)?|fifteen|forty(?:[ -]five)?|sixty) minutes on this)/i.test(text)){await focusAction('start',{duration:spokenDuration(text)});return true;}
@@ -550,7 +581,23 @@ export function runProbe(){const checks=[['finish window is 900ms',FINISH_MS===9
 liveVoice=createLiveVoice({
   getToken:()=>api('/live/token',{}),
   getCameraFrame:()=>cameraStream && $('cameraLiveConsent').checked ? frame($('cameraPreview'),640) : null,
-  callTool:(name,arguments_)=>api('/live/tool',{name,arguments:arguments_}),
+  callTool:async(name,arguments_)=>{
+    if(name==='list_project_files')return api('/workspace/files',{});
+    if(name==='read_project_file')return api('/workspace/read',{name:arguments_.name});
+    if(name==='write_project_file'){
+      const filename=arguments_?.name;
+      if(typeof filename!=='string'||typeof arguments_?.content!=='string')
+        throw new Error('Invalid project draft file proposal.');
+      if(!window.confirm('ARKUS proposes to '+(arguments_.replace?'REPLACE':'create')+
+        ' project file '+filename+'. Approve saving this text/code draft? The code will NOT execute.')){
+        throw new Error('User declined the project file write.');
+      }
+      const saved=await api('/workspace/write',{name:filename,content:arguments_.content,
+                                              replace:arguments_.replace===true,approved:true});
+      await loadDraftFiles();return saved;
+    }
+    return api('/live/tool',{name,arguments:arguments_});
+  },
   onExchange:(user,assistant)=>api('/live/history',{user,assistant}),
   onToolResult:(name,result)=>{
     if(name==='remember_note'){refreshGraph().catch(error=>toast(error.message));}
@@ -713,6 +760,23 @@ $('cadExport').addEventListener('click',async()=>{
     $('cadAssemblyStatus').textContent=result.triangles+' triangles in STL · revision '+result.revision+'.';
   }catch(error){toast(error.message);}
 });
+$('draftSave').addEventListener('click',async()=>{
+  const name=$('draftFilename').value.trim(),content=$('draftContent').value;
+  try{
+    const list=await api('/workspace/files',{});
+    const replace=list.files.some(f=>f.name===name);
+    const message=(replace?'Replace existing':'Save new')+' project file '+name+'? Text/code drafts will never execute automatically.';
+    if(!window.confirm(message))return;
+    const result=await api('/workspace/write',{name,content,replace,approved:true});
+    toast('Saved project draft '+result.name);await loadDraftFiles();
+  }catch(e){toast('Cannot save: '+e.message);}
+});
+$('draftOpen').addEventListener('click',async()=>{
+  try{
+    const result=await api('/workspace/read',{name:$('draftFilename').value.trim()});
+    $('draftContent').value=result.content;toast('Opened '+result.name);
+  }catch(e){toast(e.message);}
+});
 $('knowledgeImport').addEventListener('click',async()=>{
   const file=$('knowledgeFile').files?.[0];
   if(!file){toast('Select a TXT, Markdown, DOCX or supported text PDF.');return;}
@@ -752,7 +816,7 @@ $('groundedSearch').addEventListener('click',async()=>{
 addEventListener('pagehide',()=>{cadPreviewSession?.close();liveVoice?.stop();stopScreen();stopCamera();stopListening();stopSpeech();});
 setupSpeech();
 
-await Promise.allSettled([refreshGraph(),loadModels(),refreshFocus(),diagnostics(),loadProjects(),loadCapabilities(),loadSkills(),loadActions(),loadCADModels(),loadKnowledge(),loadMCP()]);
+await Promise.allSettled([refreshGraph(),loadModels(),refreshFocus(),diagnostics(),loadProjects(),loadCapabilities(),loadSkills(),loadActions(),loadCADModels(),loadKnowledge(),loadDraftFiles(),loadMCP()]);
 await refreshWorkflows(false);
 try{const history=await api('/projects/history');restoreConversation(history.messages || []);}catch(e){toast('Project history unavailable: '+e.message);}
 const hour=new Date().getHours();$('greeting').textContent=`Good ${hour<12?'morning':hour<17?'afternoon':'evening'}, sir. ${graph.nodes.length} notes indexed, all present and accounted for. What shall we explore?`;

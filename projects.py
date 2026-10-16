@@ -122,6 +122,81 @@ class ProjectStore:
                 self._state = proposed
             return self.state()
 
+    # Project files are draft data only; ARKUS never imports, launches or evaluates them.
+    DRAFT_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,75}\.(?:md|txt|json|py|js|csv)")
+    MAX_DRAFT_BYTES = 100_000
+    MAX_DRAFT_FILES = 80
+
+    def _draft_dir(self):
+        root = self.projects_root
+        folder = root / self.active
+        drafts = folder / "drafts"
+        if any(p.is_symlink() for p in (root, folder, drafts)):
+            raise ProjectError("Linked draft folders are prohibited.")
+        if not drafts.resolve().is_relative_to(self.data):
+            raise ProjectError("Draft storage escapes the ARKUS workspace.")
+        if drafts.exists() and not drafts.is_dir():
+            raise ProjectError("Project draft storage is unavailable.")
+        return drafts
+
+    def _draft_path(self, filename):
+        if type(filename) is not str or not self.DRAFT_NAME.fullmatch(filename) or len(filename) > 80:
+            raise ProjectError("Use a short project filename ending in .md, .txt, .json, .py, .js or .csv.")
+        parent = self._draft_dir()
+        path = parent / filename
+        if path.is_symlink():
+            raise ProjectError("Linked project drafts are not allowed.")
+        return path
+
+    def list_drafts(self):
+        with self.lock:
+            folder = self._draft_dir()
+            if not folder.exists():
+                return {"files": []}
+            items = []
+            for path in sorted(folder.iterdir()):
+                if path.is_symlink():
+                    raise ProjectError("Linked project drafts are not allowed.")
+                if path.is_file() and self.DRAFT_NAME.fullmatch(path.name):
+                    if path.stat().st_size > self.MAX_DRAFT_BYTES:
+                        raise ProjectError("Project draft exceeds its size limit.")
+                    items.append({"name":path.name, "bytes":path.stat().st_size})
+            return {"files": items}
+
+    def read_draft(self, filename):
+        with self.lock:
+            path = self._draft_path(filename)
+            if not path.is_file() or path.stat().st_size > self.MAX_DRAFT_BYTES:
+                raise ProjectError("Project draft is unavailable or too large.")
+            try:
+                return {"name": filename, "content": path.read_text(encoding="utf-8")}
+            except UnicodeDecodeError:
+                raise ProjectError("Project draft is not valid UTF-8.") from None
+
+    def write_draft(self, filename, content, approved=False, replace=False):
+        if approved is not True or type(replace) is not bool:
+            raise ProjectError("Writing or replacing project files requires explicit user approval.")
+        if type(content) is not str or not content or len(content.encode("utf-8")) > self.MAX_DRAFT_BYTES:
+            raise ProjectError("Project draft must contain 1 to 100000 UTF-8 bytes.")
+        with self.lock:
+            path = self._draft_path(filename)
+            if path.exists() and not replace:
+                raise ProjectError("File exists. Explicitly approve replacing this version.")
+            folder = self._draft_dir()
+            if not folder.exists():
+                folder.mkdir(parents=True, exist_ok=False)
+            elif not folder.is_dir():
+                raise ProjectError("Project draft folder is unavailable.")
+            if len(self.list_drafts()["files"]) >= self.MAX_DRAFT_FILES and not path.exists():
+                raise ProjectError("Project file limit reached.")
+            scratch = path.with_name(path.name + "." + secrets.token_hex(6) + ".tmp")
+            try:
+                scratch.write_text(content, encoding="utf-8")
+                os.replace(scratch, path)
+            finally:
+                scratch.unlink(missing_ok=True)
+            return {"name":filename, "saved":True, "bytes":len(content.encode("utf-8"))}
+
     def _history_path(self):
         project_id = self.active
         notes = self._path(project_id)
