@@ -163,3 +163,7 @@ Click **LIVE** beside the microphone to begin a real-time **opt-in Gemini Live s
 **Local raised-arm gestures:** Camera → Enable camera preview → opt in to local gesture controls. MediaPipe's existing locally bundled PoseLandmarker observes shoulders and wrists. Hold **left arm** to choose the previous knowledge source, **right arm** to choose the next, or **both arms** to toggle Settings. Hold time 650 ms and cooldown 1800 ms. No frames or pose landmarks leave the device for gesture control; the microphone is never enabled by gesture. This is **coarse raised-arm recognition**, not finger pinch/drag, full MediaPipe hand tracking or face authentication.
 
 These features remain opt-in. Full ADA V2 parity—including autonomous web actions, editable solid/STEP CAD, precise finger gesture manipulation—and O.L.L.I.E robotics remain pending. No unsupported copyrighted source has been copied.
+
+**3D CAD preview:** Use **Preview 3D assembly** in the editable CAD section to rotate and zoom a local Three.js scene built from the editable JSON parameters before export. The preview has no inference, cloud cost, Boolean mesh union or structural validation.
+
+**One-click reference lookup:** Type a public Wikipedia topic into the Research Browser and select **Search and read public article**. ARKUS opens the approved public URL in its separate local window and extracts a short page text preview. It never sends the page to an AI model automatically or executes forms. This is bounded scripted lookup rather than full autonomous web browsing.
