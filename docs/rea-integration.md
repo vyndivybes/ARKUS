@@ -23,17 +23,17 @@ This is an **opt-in developer workflow**, not an ARKUS runtime skill, permission
 3. From an ARKUS source checkout, capture **static JavaScript/Electron** evidence for a directory you own or are authorized to inspect:
 
    ```powershell
-   python rea_review.py --target "C:\\Users\\ASUS\\ada_v2" --approve
+   python rea_review.py --target "C:\\Users\\ASUS\\ada_v2\\dist" --approve
    ```
 
-   The command explicitly calls pinned `rea-agents@6.5.0`. npm may fetch the package if absent. The target is an existing **directory**, not an EXE; this lane reads JS/Electron artifacts without launching the selected application. Native binary analysis through Ghidra or other engines is intentionally outside this workflow.
+   The command explicitly calls pinned `rea-agents@6.5.0`. npm may fetch the package if absent. The target is an existing **directory**, not an EXE; prefer a small built `dist` directory rather than a complete project containing `node_modules`. The static lane reads JS/Electron artifacts without launching the selected application. A too-large target may still time out; do not repeat a broad scan automatically. Native binary analysis through Ghidra or other engines is intentionally outside this workflow.
 
 ## Evidence boundary
 
 - A result is saved only on success as JSON under ignored `work/rea-evidence/`.
 - REA results, source maps, recovered strings and metadata may contain confidential information, embedded instructions, or credentials. Treat all output as **untrusted**; inspect and redact it before sharing or deriving a bounded design specification.
 - **Do not** commit raw evidence files, upload proprietary binaries, or feed raw findings directly into a model's instructions, system prompts, or live ARKUS knowledge store.
-- The script requires `--approve`, refuses executable-file targets, has a 180-second deadline, does not use shell interpolation, and does not change ARKUS's MCP/server permissions.
+- The script requires `--approve`, refuses executable-file targets, has a 180-second deadline, uses bounded temporary-file output rather than inheritable pipes, and on Windows explicitly ends the targeted npm/REA process tree on timeout or Ctrl+C. It does not use shell interpolation or change ARKUS's MCP/server permissions. Do not kill unrelated Node.js processes.
 - The existing `mcp_gateway.py` is a constrained HTTP, read-only tool boundary. REA's local CLI/stdio transport must not be exposed by adding unrestricted subprocess or filesystem tools to that gateway.
 
 ## Qualification
