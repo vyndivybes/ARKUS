@@ -16,6 +16,8 @@ jobs:
       - run: npm test
       - run: npm audit --audit-level=moderate
       - run: node --check viewer/app.js
+      - run: node --check viewer/gestures.js
+      - run: node --check desktop/research-window.cjs
       - run: node --check viewer/live_voice.js
       - run: node --check viewer/live_mic_worklet.js
       - run: node --check desktop/main.cjs
