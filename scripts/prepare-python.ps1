@@ -27,7 +27,10 @@ if (-not (Test-Path -LiteralPath $wheelFile)) {
     & python -m pip download --only-binary=:all: --no-deps 'pypdf==6.0.0' -d $taskWork
     if ($LASTEXITCODE -ne 0) { throw 'Could not download pinned PDF parsing dependency.' }
 }
-$actualWheel = (Get-FileHash -LiteralPath $wheelFile -Algorithm SHA256).Hash.ToLowerInvariant()
+$wheelShaObj = [Security.Cryptography.SHA256]::Create()
+try {
+    $actualWheel = [BitConverter]::ToString($wheelShaObj.ComputeHash([IO.File]::ReadAllBytes($wheelFile))).Replace('-', '').ToLowerInvariant()
+} finally { $wheelShaObj.Dispose() }
 if ($actualWheel -ne $wheelHash) { throw 'pypdf wheel checksum mismatch.' }
 $vendor = Join-Path $taskRuntime 'vendor'
 if (-not (Test-Path -LiteralPath (Join-Path $vendor 'pypdf'))) {
