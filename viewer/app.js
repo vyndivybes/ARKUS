@@ -1,6 +1,7 @@
 import {createCameraCapture} from './camera_capture.js';
 import {requestScreenCapture} from './screen_capture.js';
 import {createLiveVoice} from './live_voice.js';
+import {createResearchQueue} from './research_queue.js';
 import {classifyGesture,GestureGate} from './gestures.js';
 import {createHandUI} from './hand_ui.js';
 // One finish window for the full spoken thought; no organ starts this microphone.
@@ -104,7 +105,7 @@ async function loadProjects(projects){
 }
 async function activateProject(path,payload){
   cadPreviewSession?.close();cadPreviewSession=null;$('cadPreviewCanvas').hidden=true;cadSelected=null;
-  liveVoice?.stop();stopHandGestures();
+  liveVoice?.stop();stopHandGestures();researchQueue.cancel();
   const result=await api(path,payload);
   $('draftFilename').value='';$('draftContent').value='';$('draftValidation').textContent='';$('manualSkill').value='';
   $('source').hidden=true;
@@ -318,6 +319,44 @@ function downloadCAD(result){
   const anchor=document.createElement('a');anchor.href=url;anchor.download=result.name;
   document.body.append(anchor);anchor.click();anchor.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
+const researchQueue=createResearchQueue({
+  review:async url=>{
+    const native=window.arkusDesktop?.researchAction;
+    if(typeof native!=='function')throw Error('Research plans require the Windows ARKUS desktop app.');
+    return native('review',url);
+  },
+  approve:async(url,step,total)=>window.confirm(
+    'Approve read-only research step '+step+' of '+total+'?\\n\\n'+url+
+    '\\n\\nARKUS will open this public site and extract a bounded text excerpt in its isolated browser. No forms or accounts will be used.'
+  ),
+  onUpdate:snapshot=>{
+    $('researchPlanNext').disabled=snapshot.status!=='ready';
+    const label=snapshot.status==='idle'?'No research plan.':snapshot.status==='complete'
+      ?'Research plan complete.':snapshot.status==='reading'?'Reading the approved reference…'
+      :snapshot.status==='awaiting_approval'?'Approval required for the next reference…'
+      :'Ready for your next explicit approval.';
+    $('researchPlanStatus').textContent=label+
+      (snapshot.steps.length?' '+snapshot.index+' of '+snapshot.steps.length+' reviewed.':'')+
+      (snapshot.error?' '+snapshot.error:'');
+    const target=$('researchPlanResults');target.replaceChildren();
+    for(const entry of snapshot.results){
+      const card=document.createElement('div');card.className='workflow-card';
+      const heading=document.createElement('strong');heading.textContent=entry.title||'Public reference';
+      const link=document.createElement('p');link.textContent=entry.url;
+      const excerpt=document.createElement('pre');excerpt.textContent=entry.text;
+      excerpt.className='research-excerpt';
+      card.append(heading,link,excerpt);target.append(card);
+    }
+  }
+});
+$('researchPlanCreate').addEventListener('click',()=>{
+  try{researchQueue.plan($('researchPlanUrls').value);}catch(error){toast(error.message);}
+});
+$('researchPlanNext').addEventListener('click',async()=>{
+  try{await researchQueue.next();}catch(error){toast(error.message);}
+});
+$('researchPlanCancel').addEventListener('click',()=>researchQueue.cancel());
+
 async function researchAction(action,value){
   const native=window.arkusDesktop?.researchAction;
   if(typeof native!=='function'){
@@ -953,7 +992,7 @@ $('groundedSearch').addEventListener('click',async()=>{
     $('groundedStatus').textContent=result.grounded?'Grounded result with '+result.sources.length+' web sources.':'Google returned no source citations; verify the answer independently.';
   }catch(e){$('groundedStatus').textContent=e.message;}
 });
-addEventListener('pagehide',()=>{cadPreviewSession?.close();liveVoice?.stop();stopHandGestures();stopScreen();stopCamera();stopListening();stopSpeech();});
+addEventListener('pagehide',()=>{cadPreviewSession?.close();liveVoice?.stop();stopHandGestures();researchQueue.cancel();stopScreen();stopCamera();stopListening();stopSpeech();});
 setupSpeech();
 
 await Promise.allSettled([refreshGraph(),loadModels(),refreshFocus(),diagnostics(),loadProjects(),loadCapabilities(),loadSkills(),loadActions(),loadCADModels(),loadKnowledge(),loadDraftFiles(),loadMCP()]);
