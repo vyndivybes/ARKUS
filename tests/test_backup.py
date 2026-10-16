@@ -94,6 +94,7 @@ class AppBackupTests(unittest.TestCase):
                 self.assertFalse(archive.is_relative_to(app.data))
                 with zipfile.ZipFile(archive) as z:
                     self.assertTrue(any(n.endswith(".md") for n in z.namelist()))
+                self.assertTrue(any("notes/captures/" in n for n in z.namelist()))
 
 
 if __name__=="__main__":
