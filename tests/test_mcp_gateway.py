@@ -23,6 +23,6 @@ class MCPTests(unittest.TestCase):
   with patch.object(self.gateway,"discover",return_value=[{"name":"search_notes","annotations":{"readOnlyHint":True}}]):
    with patch("mcp_gateway.urllib.request.build_opener") as request:
     request.return_value.open.return_value.__enter__.return_value.headers={"Content-Type":"application/json"}
-   request.return_value.open.return_value.__enter__.return_value.read.return_value=json.dumps({"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"found"}]}}).encode()
+    request.return_value.open.return_value.__enter__.return_value.read.return_value=json.dumps({"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"found"}]}}).encode()
     result=self.gateway.call("local","search_notes",{"q":"test"},approved=True)
     self.assertEqual(result["content"][0]["text"],"found")
