@@ -98,7 +98,10 @@ class SmartHomeTests(unittest.TestCase):
     def test_bad_storage_symlink_refused(self):
         root=Path(self.tmp.name)
         file=root/"smart-home-devices.json"
-        file.symlink_to(root/"other.json")
+        try:
+            file.symlink_to(root/"other.json")
+        except OSError:
+            self.skipTest("Windows symlink creation needs developer permission.")
         with self.assertRaises(SmartHomeError):
             SmartHomeGateway(root,adapter=self.adapter)
 
