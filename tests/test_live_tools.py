@@ -2,6 +2,7 @@
 import os
 import tempfile
 import unittest
+from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
 
@@ -31,7 +32,8 @@ class LiveToolTests(unittest.TestCase):
     def test_remember_and_reminder_persist_without_automatic_external_actions(self):
         saved = self.app.live_tool("remember_note", {"text": "My project alpha expects cobalt-blue sample"})
         self.assertIn("Remembered", saved["answer"])
-        reminder = self.app.live_tool("set_reminder", {"when": "2030-01-02T15:30", "message": "Review the alpha sample"})
+        when = (datetime.now().astimezone() + timedelta(days=3)).strftime("%Y-%m-%dT%H:%M")
+        reminder = self.app.live_tool("set_reminder", {"when": when, "message": "Review the alpha sample"})
         self.assertTrue(reminder["answer"])
         restarted = App(self.root)
         self.assertIn("cobalt-blue", restarted.chat("cobalt-blue")["answer"])
