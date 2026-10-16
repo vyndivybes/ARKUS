@@ -100,6 +100,7 @@ async function activateProject(path,payload){
   await loadProjects(result.projects);
   await refreshWorkflows(false);
   await loadSkills();
+  await loadActions();
   restoreConversation(result.history);
   $('search').value='';renderNotes();
   toast('Workspace active: '+$('activeProject').selectedOptions[0]?.textContent);
@@ -164,6 +165,31 @@ async function refreshWorkflows(announce=true){
 async function showBriefing(){
   try{const b=await api('/workflow/briefing');addMessage(b.answer,'assistant');speak(b.answer);
   }catch(e){toast(e.message);}
+}
+async function loadActions(){
+  const panel=$('actionList');panel.replaceChildren();
+  try{
+    const result=await api('/actions');
+    const recent=result.actions.slice(-20).reverse();
+    if(!recent.length){panel.textContent='No actions in this project.';return;}
+    for(const action of recent){
+      const card=document.createElement('div');card.className='workflow-card';
+      const text=document.createElement('p');
+      text.textContent=action.tool+' '+action.arguments.operator+' '+action.arguments.a+', '+action.arguments.b+' · '+action.status+(action.status==='complete'?' = '+action.result:'');
+      card.append(text);
+      if(action.status==='pending'){
+        const approve=document.createElement('button');approve.textContent='Approve once';
+        approve.addEventListener('click',async()=>{
+          if(!confirm('Run this exact numerical operation once?'))return;
+          try{const done=await api('/actions/approve',{id:action.id,approved:true});addMessage('Calculation result: '+done.result);await loadActions();}catch(e){toast(e.message);}
+        });
+        const cancel=document.createElement('button');cancel.textContent='Reject';cancel.className='secondary';
+        cancel.addEventListener('click',async()=>{try{await api('/actions/cancel',{id:action.id});await loadActions();}catch(e){toast(e.message);}});
+        card.append(approve,cancel);
+      }
+      panel.append(card);
+    }
+  }catch(e){panel.textContent=e.message;}
 }
 async function loadSkills(){
   const root=$('skillRegistry');root.replaceChildren();
@@ -393,6 +419,14 @@ $('reminderNotifications').addEventListener('click',async()=>{
   const permission=await Notification.requestPermission();
   toast(permission==='granted'?'Local reminder alerts enabled while ARKUS is open.':'Browser permission not granted; in-app reminders still work.');
 });
+$('actionPropose').addEventListener('click',async()=>{
+  const operator=$('actionOperator').value;
+  const a=$('actionA').value,b=$('actionB').value;
+  if(!a||!b){toast('Enter both operands.');return;}
+  try{await api('/actions/propose',{tool:'calculate',arguments:{operator,a:Number(a),b:Number(b)}});
+    await loadActions();toast('Action prepared; approve it explicitly to run.');}
+  catch(e){toast(e.message);}
+});
 $('generateSkill').addEventListener('click',async()=>{
   const goal=$('skillGoal').value.trim();if(!goal){toast('Describe the new calculation skill.');return;}
   try{const draft=await api('/skills/generate',{goal});$('skillResult').textContent='Skill draft '+draft.name+' created. Run its tests before activation.';await loadSkills();}
@@ -430,7 +464,7 @@ $('postureConsent').addEventListener('change',enablePosture);$('calibratePosture
 addEventListener('pagehide',()=>{stopScreen();stopCamera();stopListening();stopSpeech();});
 setupSpeech();
 
-await Promise.allSettled([refreshGraph(),loadModels(),refreshFocus(),diagnostics(),loadProjects(),loadCapabilities(),loadSkills()]);
+await Promise.allSettled([refreshGraph(),loadModels(),refreshFocus(),diagnostics(),loadProjects(),loadCapabilities(),loadSkills(),loadActions()]);
 await refreshWorkflows(false);
 try{const history=await api('/projects/history');restoreConversation(history.messages || []);}catch(e){toast('Project history unavailable: '+e.message);}
 const hour=new Date().getHours();$('greeting').textContent=`Good ${hour<12?'morning':hour<17?'afternoon':'evening'}, sir. ${graph.nodes.length} notes indexed, all present and accounted for. What shall we explore?`;
