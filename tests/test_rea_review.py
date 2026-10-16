@@ -148,7 +148,7 @@ class REAReviewTests(unittest.TestCase):
     def test_error_distinguishes_empty_from_oversized_stdout(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            for output, kind in (("", "empty"), ("x" * (8 * 1024 * 1024 + 1), "exceeded")):
+            for output, kind in (("", "zero bytes"), ("x" * (8 * 1024 * 1024 + 1), "exceeded")):
                 process, launch = process_factory(output)
                 with patch("rea_review.shutil.which", return_value="npx.cmd"), \
                      patch("rea_review.subprocess.Popen", side_effect=launch):
