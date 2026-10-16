@@ -66,8 +66,11 @@ class LiveTokenTests(unittest.TestCase):
             self.assertEqual(caught.exception.code,403)
             caught.exception.close()
             request.add_header("X-Arkus-Token",server.app.token)
-            with patch("live_tokens.urllib.request.urlopen") as upstream:
-                upstream.return_value.__enter__.return_value.read.return_value=b'{"name":"auth_tokens/a_limited_example"}'
+            with patch("server.LiveTokenIssuer") as issuer:
+                issuer.return_value.create.return_value={
+                    "token":"auth_tokens/a_limited_example",
+                    "model":"gemini-3.1-flash-live-preview",
+                    "expires_at":"2026-10-16T02:00:00Z"}
                 with urllib.request.urlopen(request,timeout=3) as response:
                     result=json.load(response)
             self.assertEqual(result["token"],"auth_tokens/a_limited_example")
