@@ -50,6 +50,32 @@ class LiveTokenTests(unittest.TestCase):
             self.assertEqual(result["token"],"auth_tokens/ephemeral_sample")
             self.assertNotIn("PRIVATE_TEST_KEY_123",json.dumps(result))
             self.assertNotIn("PRIVATE_TEST_KEY_123",req.full_url)
+    def test_live_token_http_requires_local_csrf_token(self):
+        import threading
+        import urllib.request
+        import urllib.error
+        from server import make_server
+        server=make_server(0,self.app())
+        thread=threading.Thread(target=server.serve_forever,daemon=True)
+        thread.start()
+        try:
+            url=f"http://127.0.0.1:{server.server_port}/live/token"
+            request=urllib.request.Request(url,data=b"{}",headers={"Content-Type":"application/json"})
+            with self.assertRaises(urllib.error.HTTPError) as caught:
+                urllib.request.urlopen(request,timeout=2)
+            self.assertEqual(caught.exception.code,403)
+            caught.exception.close()
+            request.add_header("X-Arkus-Token",server.app.token)
+            with patch("live_tokens.urllib.request.urlopen") as upstream:
+                upstream.return_value.__enter__.return_value.read.return_value=b'{"name":"auth_tokens/a_limited_example"}'
+                with urllib.request.urlopen(request,timeout=3) as response:
+                    result=json.load(response)
+            self.assertEqual(result["token"],"auth_tokens/a_limited_example")
+            self.assertNotIn("PRIVATE_TEST_KEY_123",json.dumps(result))
+        finally:
+            server.shutdown()
+            server.server_close()
+
     def test_invalid_response_fails_without_key_or_provider_body(self):
         with patch("live_tokens.urllib.request.urlopen") as request:
             request.return_value.__enter__.return_value.read.return_value=b'{}'
