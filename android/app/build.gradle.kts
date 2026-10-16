@@ -4,7 +4,7 @@ plugins {
 }
 android {
     namespace = "com.arkus.companion"
-    compileSdk = 35
+    compileSdk = 36
     defaultConfig {
         applicationId = "com.arkus.companion"
         minSdk = 34
