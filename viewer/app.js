@@ -327,6 +327,16 @@ $('createProject').addEventListener('click',async()=>{
   const name=$('newProject').value.trim();if(!name){toast('Enter a project name.');return;}
   try{await activateProject('/projects/create',{name});$('newProject').value='';}catch(e){toast(e.message);}
 });
+$('backupProjects').addEventListener('click',async()=>{
+  const el=$('backupStatus');
+  if(!window.confirm('Create a local backup of notes, project conversations, plans and reminders? API keys will NOT be included.'))return;
+  el.textContent='Creating local backup…';
+  try{
+    const b=await api('/backup/create',{});
+    el.textContent=`Backup verified: ${b.files} files at ${b.archive}. API credentials excluded. Store an additional copy outside the laptop.`;
+    toast('Backup created on this computer.');
+  }catch(e){el.textContent='Backup not completed: '+e.message;toast(e.message);}
+});
 $('clearProjectChat').addEventListener('click',async()=>{
   if(!window.confirm('Clear stored conversation in this project? Notes will not be changed.'))return;
   try{await api('/history/clear',{});restoreConversation([]);toast('Only this project conversation was cleared.');}catch(e){toast(e.message);}
