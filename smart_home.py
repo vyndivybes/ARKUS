@@ -18,6 +18,7 @@ from pathlib import Path
 RFC1918 = tuple(ipaddress.ip_network(n) for n in
                 ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"))
 SAFE_TYPES = {"Bulb", "Plug", "WallSwitch", "LightStrip", "Strip"}
+VOICE_AUTO_TYPES = {"Bulb", "LightStrip"}  # Never auto-switch outlets or relays.
 MAC_PATTERN = re.compile(r"^(?:[0-9A-F]{2}:){5}[0-9A-F]{2}$")
 MAX_DEVICES = 12
 
@@ -123,6 +124,7 @@ class SmartHomeGateway:
         self.adapter = adapter if adapter is not None else KasaAdapter()
         self.candidates = {}
         self.pending = {}
+        self.last_voice = {}  # Session-only debounce.
         self.records = []
         self.events = []
         if self.file.is_symlink():
@@ -141,6 +143,8 @@ class SmartHomeGateway:
                     if not isinstance(record, dict) or not isinstance(record.get("project"), str):
                         raise ValueError()
                     _validate_device({**record, "is_on": False}, normalize_lan_host(record.get("host")))
+                    if type(record.get("voice_auto", False)) is not bool or (record.get("voice_auto") is True and record["type"] not in VOICE_AUTO_TYPES):
+                        raise ValueError()
             except (ValueError, TypeError, KeyError, OSError, json.JSONDecodeError):
                 raise SmartHomeError("Saved smart-home registry is invalid; no device accessed.") from None
 
@@ -202,7 +206,7 @@ class SmartHomeGateway:
                 raise SmartHomeError("Trusted device registry limit reached.")
             if any(d["project"] == project and d["host"] == current["host"] for d in self.records):
                 raise SmartHomeError("This LAN address is already paired.")
-            record = {"project": project, "id": secrets.token_urlsafe(10),
+            record = {"project": project, "id": secrets.token_urlsafe(10), "voice_auto": False,
                       **{k: current[k] for k in ("host", "mac", "type", "model", "alias")}}
             self.records.append(record)
             try:
@@ -226,6 +230,77 @@ class SmartHomeGateway:
                     self._save()
                     return {"status": "unpaired"}
             raise SmartHomeError("Device is not paired to this workspace.")
+
+
+    def set_voice_auto(self, project, device_id, enabled, *, approved=False):
+        """Permit hands-free switching only for deliberately enrolled light-class devices."""
+        with self.lock:
+            project = self._project(project)
+            if approved is not True or type(enabled) is not bool:
+                raise SmartHomeError("Changing voice permissions requires explicit local approval.")
+            device = next((d for d in self.records if d["project"] == project and d["id"] == device_id), None)
+            if not device:
+                raise SmartHomeError("Pair this device in the active workspace first.")
+            if enabled and device["type"] not in VOICE_AUTO_TYPES:
+                raise SmartHomeError("Automatic switching is limited to lights, not plugs or wall switches.")
+            previous = device.get("voice_auto", False)
+            device["voice_auto"] = enabled
+            try:
+                self._save()
+            except Exception:
+                device["voice_auto"] = previous
+                raise
+            return {"device": device["alias"], "voice_auto": enabled}
+
+    @staticmethod
+    def _voice_intent(utterance):
+        """Match only wake-prefixed exact device names, never arbitrary LLM instructions."""
+        if type(utterance) is not str or len(utterance) > 180:
+            raise SmartHomeError("Invalid spoken device command.")
+        cleaned = re.sub(r"[.!?]+$", "", utterance.strip().lower())
+        match = re.fullmatch(
+            r"(?:hey|okay|ok)\s+arkus[, ]+\s*(?:please\s+)?(?:turn|switch)\s+(on|off)\s+(?:the\s+)?([a-z0-9][a-z0-9 -]{0,79})",
+            cleaned
+        )
+        if not match:
+            raise SmartHomeError("Say 'Hey ARKUS, turn on Study Light' using the trusted device name.")
+        return match.group(1), " ".join(match.group(2).split())
+
+    def voice(self, project, utterance):
+        """Voice transcript: propose typed approval or execute an explicitly enrolled light."""
+        with self.lock:
+            project = self._project(project)
+            desired, name = self._voice_intent(utterance)
+            matches = [d for d in self.records if d["project"] == project and
+                       " ".join(d["alias"].strip().lower().split()) == name]
+            if len(matches) != 1:
+                raise SmartHomeError("No uniquely named trusted device matched this spoken command.")
+            device = matches[0]
+            if device.get("voice_auto") is not True:
+                return {"status": "approval-required", **self.propose(project, device["id"], desired)}
+            if device["type"] not in VOICE_AUTO_TYPES:
+                raise SmartHomeError("Only enrolled lights can be switched automatically.")
+            key = (project, device["id"])
+            now = time.monotonic()
+            if now - self.last_voice.get(key, -1e9) < 5:
+                raise SmartHomeError("Voice command rate limit: wait five seconds.")
+            self.last_voice[key] = now
+            log = {"project": project, "device": device["id"], "action": desired,
+                   "source": "voice-auto", "status": "failed"}
+            try:
+                current = _validate_device(self.adapter.probe(device["host"]), device["host"])
+                if current["mac"] != device["mac"] or current["type"] != device["type"]:
+                    raise SmartHomeError("Device identity or type changed. Voice action refused.")
+                state = desired == "on"
+                result = _validate_device(self.adapter.switch(device["host"], state, device["mac"]), device["host"])
+                if result["mac"] != device["mac"] or result["type"] != device["type"] or result["is_on"] is not state:
+                    raise SmartHomeError("Device did not confirm the requested state.")
+                log["status"] = "complete"
+                return {"status": "complete", "device": device["alias"], "is_on": result["is_on"]}
+            finally:
+                self.events.append(log)
+                self.events = self.events[-80:]
+                self._save()
 
     def propose(self, project, device_id, desired):
         with self.lock:
