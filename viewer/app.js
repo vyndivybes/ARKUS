@@ -419,6 +419,12 @@ $('reminderNotifications').addEventListener('click',async()=>{
   const permission=await Notification.requestPermission();
   toast(permission==='granted'?'Local reminder alerts enabled while ARKUS is open.':'Browser permission not granted; in-app reminders still work.');
 });
+$('actionRequest').addEventListener('click',async()=>{
+  const goal=$('actionGoal').value.trim();
+  if(!goal){toast('Describe a calculation.');return;}
+  try{await api('/actions/request',{goal});await loadActions();toast('Proposal prepared; approve once to run.');}
+  catch(e){toast(e.message);}
+});
 $('actionPropose').addEventListener('click',async()=>{
   const operator=$('actionOperator').value;
   const a=$('actionA').value,b=$('actionB').value;
