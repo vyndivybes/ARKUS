@@ -6,12 +6,13 @@ const path = require('node:path');
 const fs = require('node:fs');
 const {createResearchWindow}=require('./research-window.cjs');
 const {createDraftEditor}=require('./draft-editor.cjs');
+const {createBackendDiagnostics}=require('./backend-diagnostics.cjs');
 const PORT = Number(process.env.ARKUS_PORT || 4700);
 if (!Number.isInteger(PORT) || PORT < 1024 || PORT > 65535) throw new Error('Invalid ARKUS_PORT');
 const ORIGIN = `http://127.0.0.1:${PORT}`;
 const desktopToken = crypto.randomBytes(32).toString('hex');
 const hashSalt = crypto.randomBytes(32);
-let backend, mainWindow, card, sensorProcess, sensorPending, sensorEnabled = false, sensorBusy = false, timer, research;
+let backend, backendDiagnostics, mainWindow, card, sensorProcess, sensorPending, sensorEnabled = false, sensorBusy = false, timer, research;
 const root = app.getAppPath();
 if (process.env.ARKUS_TEST_DATA_DIR) app.setPath('userData', path.resolve(process.env.ARKUS_TEST_DATA_DIR));
 const hash = value => crypto.createHmac('sha256', hashSalt).update(value).digest('hex');
@@ -81,7 +82,7 @@ async function tick() {
 }
 async function waitForBackend() {
   for (let attempt = 0; attempt < 60; attempt++) {
-    if (backend.exitCode !== null) throw new Error('Python backend exited. Install Python 3.11+ and check the configuration.');
+    if (backendDiagnostics.hasFailed()) throw new Error(backendDiagnostics.failureMessage());
     try { await request('/api/session'); return; } catch { await new Promise(resolve => setTimeout(resolve, 250)); }
   }
   throw new Error('ARKUS could not start its local backend. Check Python 3.11+ and whether the configured port is free.');
@@ -93,8 +94,8 @@ app.whenReady().then(async () => {
   await new Promise((resolve, reject) => { const probe = net.createServer(); probe.once('error', () => reject(new Error(`Port ${PORT} is occupied. Close the other ARKUS instance or set ARKUS_PORT.`))); probe.listen(PORT, '127.0.0.1', () => probe.close(resolve)); });
   const embedded = path.join(process.resourcesPath, 'python', 'python.exe');
   const python = process.env.ARKUS_PYTHON || (app.isPackaged && fs.existsSync(embedded) ? embedded : 'python');
-  backend = spawn(python, [path.join(root, 'server.py')], { cwd: root, windowsHide: true, stdio: 'ignore', env: { ...process.env, ARKUS_DATA_DIR: app.getPath('userData'), ARKUS_CONFIG: process.env.ARKUS_CONFIG || path.join(app.getPath('userData'), 'config.json'), ARKUS_PORT: String(PORT), ARKUS_DESKTOP_TOKEN: desktopToken } });
-  backend.on('error', () => { dialog.showErrorBox('ARKUS backend unavailable', 'Install Python 3.11+ and make python available, or set ARKUS_PYTHON to its executable path.'); app.quit(); });
+  backend = spawn(python, [path.join(root, 'server.py')], { cwd: root, windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'], env: { ...process.env, ARKUS_DATA_DIR: app.getPath('userData'), ARKUS_CONFIG: process.env.ARKUS_CONFIG || path.join(app.getPath('userData'), 'config.json'), ARKUS_PORT: String(PORT), ARKUS_DESKTOP_TOKEN: desktopToken } });
+  backendDiagnostics = createBackendDiagnostics(backend, app.getPath('userData'));
   await waitForBackend();
   // No persistent media grant: every new request goes through explicit consent.
   session.defaultSession.setPermissionCheckHandler(() => false);
