@@ -135,6 +135,14 @@ class App:
             except BackupError as exc:
                 raise UserError(str(exc), 409) from None
 
+    def due_all_projects(self):
+        with self.lock:
+            try:
+                ids = [item["id"] for item in self.projects.state()["projects"]]
+                return {"due": self.companion.due_across(ids)}
+            except WorkflowError as exc:
+                raise UserError(str(exc), 409) from None
+
     def workflows_state(self):
         with self.lock:
             return self.companion.snapshot(self.projects.active)
@@ -423,6 +431,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, self.app.projects.state())
             if path == '/projects/history':
                 return self.send(200, {'messages': self.app.projects.read_history()})
+            if path == '/workflow/due-all':
+                return self.send(200, self.app.due_all_projects())
             if path == '/workflow/state':
                 return self.send(200, self.app.workflows_state())
             if path == '/workflow/briefing':
