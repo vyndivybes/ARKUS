@@ -18,7 +18,7 @@ const {_electron}=require('playwright'),fs=require('node:fs'),os=require('node:o
   await page.locator('#researchLinks button').click();
   await page.waitForFunction(()=>document.getElementById('researchResult').textContent.includes('library/math.html'));
   // Stage 3: a bounded research plan must review only after each explicit approval.
-  await page.locator('#researchPlanUrls').fill('https://docs.python.org/3/\\nhttps://en.wikipedia.org/wiki/Bicycle');
+  await page.locator('#researchPlanUrls').fill('https://docs.python.org/3/\nhttps://en.wikipedia.org/wiki/Bicycle');
   await page.locator('#researchPlanCreate').click();
   await page.locator('#researchPlanStatus').filter({hasText:'0 of 2 reviewed'}).waitFor();
   await page.locator('#researchPlanNext').click();
