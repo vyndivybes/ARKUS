@@ -6,6 +6,7 @@ without a separate, configured model invocation.
 import hashlib
 import io
 import re
+import secrets
 import sqlite3
 import threading
 import zipfile
@@ -113,7 +114,7 @@ class KnowledgeBase:
             existing=db.execute("SELECT id FROM documents WHERE name=?",(name,)).fetchone()
             count=db.execute("SELECT count(*) FROM documents").fetchone()[0]
             if existing is None and count>=MAX_DOCS:raise KnowledgeError("Maximum 50 documents per project.")
-            identity=existing[0] if existing else sha[:24]
+            identity=existing[0] if existing else secrets.token_hex(12)
             if existing:
                 db.execute("DELETE FROM passages WHERE doc_id=?",(identity,))
                 db.execute("DELETE FROM documents WHERE id=?",(identity,))
