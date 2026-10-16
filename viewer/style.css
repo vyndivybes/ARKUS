@@ -27,3 +27,9 @@
 .capability-item{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;padding:5px 0;border-bottom:1px solid var(--border)}
 .capability-item strong{font-size:10px;line-height:1.45;font-weight:500}
 .capability-item small{font-size:9px;color:#84c2b2;text-align:right;max-width:45%;overflow-wrap:anywhere}
+
+/* Strictly local gesture pointer: no hit testing or DOM interaction from overlay. */
+#handCursor{position:fixed;z-index:21;pointer-events:none;width:20px;height:20px;border:2px solid #b3fff0;border-radius:50%;background:#1a60594a;box-shadow:0 0 18px #5bfbe28a;transform:translate(-50%,-50%);transition:left 65ms linear,top 65ms linear}
+#handCursor[data-hand=grab]{border-color:#f1d5a2;background:#aa834a4a}
+#handCursor[data-hand=release]{border-color:#d1f4f2;background:transparent}
+@media(prefers-reduced-motion:reduce){#handCursor{transition:none}}
