@@ -24,15 +24,18 @@ def _supported(name):
     pieces = PurePosixPath(name).parts
     if name == "projects.json":
         return True
-    if len(pieces) == 2 and pieces[0] == "notes":
-        return pieces[1].lower().endswith((".md", ".txt"))
+    if len(pieces) in (2, 3) and pieces[0] == "notes":
+        if len(pieces) == 3 and pieces[1] != "captures":
+            return False
+        return pieces[-1].lower().endswith((".md", ".txt"))
     if len(pieces) == 3 and pieces[0] == "projects" and NAME.fullmatch(pieces[1]):
         return pieces[2] in ("history.json", "companion.json")
-    if (len(pieces) == 4 and pieces[0] == "projects" and NAME.fullmatch(pieces[1])
-            and pieces[2] == "notes"):
-        return pieces[3].lower().endswith((".md", ".txt"))
+    if (len(pieces) in (4, 5) and pieces[0] == "projects"
+            and NAME.fullmatch(pieces[1]) and pieces[2] == "notes"):
+        if len(pieces) == 5 and pieces[3] != "captures":
+            return False
+        return pieces[-1].lower().endswith((".md", ".txt"))
     return False
-
 
 def _safe_rel(name):
     if (not isinstance(name, str) or not name or "\\" in name or name.startswith("/")
