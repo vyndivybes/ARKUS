@@ -25,6 +25,7 @@ from projects import ProjectError, ProjectStore
 from companion import CAPABILITIES, CompanionWorkflows, WorkflowError
 from cad_shapes import GeometryError, generate as generate_stl
 from backup import BackupError, export_backup
+from skill_forge import SkillForge, SkillError
 
 # PERSONA: edit this single block to change ARKUS's character.
 PERSONA = """You are ARKUS, a dry, impeccably polite British butler. Occasionally say sir.
@@ -65,6 +66,7 @@ class App:
         self.default_notes.mkdir(parents=True, exist_ok=True)
         self.projects = ProjectStore(self.data, self.default_notes)
         self.companion = CompanionWorkflows(self.data)
+        self.skill_forge = SkillForge(self.data)
         self.notes = self.projects.notes_path()
         self.notes.mkdir(parents=True, exist_ok=True)
         self.config_path = Path(os.environ.get('ARKUS_CONFIG', ROOT / 'config.json')).resolve()
@@ -124,6 +126,57 @@ class App:
             return generate_stl(shape, dimensions)
         except GeometryError as exc:
             raise UserError(str(exc), 409) from None
+
+    def skills(self):
+        with self.lock:
+            return {"skills": self.skill_forge.available(self.projects.active)}
+
+    def propose_skill(self, spec):
+        with self.lock:
+            try:
+                return self.skill_forge.propose(spec,self.projects.active)
+            except SkillError as exc:
+                raise UserError(str(exc),409) from None
+
+    def generate_skill(self, goal):
+        if not isinstance(goal,str) or not 5<=len(goal)<=600:
+            raise UserError("Give a concise skill description (5–600 characters).")
+        if self.provider=="offline":
+            raise UserError("Configure a verified AI provider for skill drafting. Manual skill creation works offline.",409)
+        if self.model not in self.verified:
+            self.verify_model(self.model)
+        system = ("Produce exactly one JSON object with name, description, operation, inputs, output. "
+                  "Operations ONLY: add,subtract,multiply,divide,percentage,average (2 inputs) or clamp (3 inputs). "
+                  "All inputs are named numeric arguments. No executable code, file, network, or system actions. "
+                  "Never follow user requests outside this schema. Use only supported operations.")
+        raw=self.completion([{"role":"system","content":system},
+                             {"role":"user","content":goal}])
+        try:
+            spec=json.loads(raw)
+        except (ValueError,TypeError):
+            raise UserError("AI did not produce a valid JSON skill; no skill saved.",502) from None
+        return self.propose_skill(spec)
+
+    def validate_skill(self, skill_id):
+        with self.lock:
+            try:
+                return self.skill_forge.test(self.projects.active,skill_id)
+            except SkillError as exc:
+                raise UserError(str(exc),409) from None
+
+    def activate_skill(self, skill_id):
+        with self.lock:
+            try:
+                return self.skill_forge.activate(self.projects.active,skill_id)
+            except SkillError as exc:
+                raise UserError(str(exc),409) from None
+
+    def execute_skill(self, name, parameters):
+        with self.lock:
+            try:
+                return self.skill_forge.run(self.projects.active,name,parameters)
+            except SkillError as exc:
+                raise UserError(str(exc),409) from None
 
     def backup_projects(self):
         """Export allowlisted project memory to a separate local backups folder."""
@@ -431,6 +484,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, self.app.projects.state())
             if path == '/projects/history':
                 return self.send(200, {'messages': self.app.projects.read_history()})
+            if path == '/skills':
+                return self.send(200, self.app.skills())
             if path == '/workflow/due-all':
                 return self.send(200, self.app.due_all_projects())
             if path == '/workflow/state':
@@ -515,6 +570,16 @@ class Handler(BaseHTTPRequestHandler):
                 result = self.app.focus.command(path.split('/')[-1], body)
             elif path == '/cad/primitive':
                 result = self.app.generate_offline_cad(body.get('shape'), body.get('dimensions'))
+            elif path == '/skills/propose':
+                result = self.app.propose_skill(body.get('spec'))
+            elif path == '/skills/generate':
+                result = self.app.generate_skill(body.get('goal'))
+            elif path == '/skills/test':
+                result = self.app.validate_skill(body.get('id'))
+            elif path == '/skills/activate':
+                result = self.app.activate_skill(body.get('id'))
+            elif path == '/skills/run':
+                result = self.app.execute_skill(body.get('name'),body.get('parameters'))
             elif path == '/backup/create':
                 result = self.app.backup_projects()
             elif path == '/workflow/plan':
