@@ -11,3 +11,10 @@ test('reference links reject private addresses, scripts and external hosts and r
  assert.equal(links.length,2);assert.equal(links[0].text,'Python');assert.equal(links[1].text.length,160);
  assert.equal(safeLinks(Array.from({length:100},(_,i)=>({url:'https://github.com/'+i}))).length,30);
 });
+
+test('approved research must stay on the original host even through allowlisted redirects',()=>{
+ const {requireApprovedResearchHost}=require('../desktop/research-utils.cjs');
+ assert.equal(requireApprovedResearchHost('https://docs.python.org/3/','https://docs.python.org/3/library/'),true);
+ assert.throws(()=>requireApprovedResearchHost('https://docs.python.org/3/','https://github.com/vyndivybes/ARKUS'),/approved host/i);
+ assert.throws(()=>requireApprovedResearchHost('https://docs.python.org/3/','https://evil.example/'));
+});
