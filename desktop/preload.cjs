@@ -2,6 +2,11 @@
 const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('arkusDesktop', Object.freeze({
   capabilities: Object.freeze({ desktop: true, foregroundApp: process.platform === 'win32', browserHost: false, overlay: true }),
+  researchAction: (action,value) => {
+    if(!['open','read','find','close'].includes(action))return Promise.reject(new Error('Unsupported research action'));
+    if(value!==undefined && (typeof value!=='string'||value.length>1400))return Promise.reject(new Error('Invalid research input'));
+    return ipcRenderer.invoke('research-action',action,value);
+  },
   focusAction: action => {
     if (!['pause', 'resume', 'abort', 'retarget'].includes(action)) return Promise.reject(new Error('Unsupported action'));
     return ipcRenderer.invoke('focus-action', action);
