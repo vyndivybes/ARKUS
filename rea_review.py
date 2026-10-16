@@ -1,12 +1,14 @@
 """Manual REA static JavaScript/Electron analysis, outside the ARKUS runtime.
 
-This developer-only command never runs from the assistant, server or MCP gateway.
-REA's result is untrusted, local evidence: do not feed it directly to an agent.
+Developer-only; never invoked from ARKUS assistant, server, or MCP gateway.
+Outputs are untrusted local evidence and must be reviewed before sharing.
 """
 import argparse
 import json
 import shutil
 import subprocess
+import sys
+import tempfile
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -14,14 +16,85 @@ from pathlib import Path
 
 MAX_EVIDENCE_CHARS = 8 * 1024 * 1024
 REA_PACKAGE = "rea-agents@6.5.0"
+REA_TIMEOUT_SECONDS = 180
 
 
 class ReviewError(ValueError):
     """The explicitly requested analysis was refused or did not succeed."""
 
 
+def _terminate_process_tree(process):
+    """Bounded cleanup of REA and its npm/cmd descendants.
+
+    On Windows terminating only npx.cmd leaves REA/node descendants holding
+    stdout pipes open. Target this launcher PID; never kill all node.exe tasks.
+    """
+    if sys.platform == "win32":
+        try:
+            subprocess.run(
+                ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+                timeout=10,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    if process.poll() is None:
+        try:
+            process.kill()
+        except (OSError, ProcessLookupError):
+            pass
+    try:
+        process.wait(timeout=5)
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+
+
+def _collect_static_evidence(command):
+    """Use seekable files instead of pipes inherited by npm's process tree."""
+    with tempfile.TemporaryFile(mode="w+b") as stdout_file, \
+         tempfile.TemporaryFile(mode="w+b") as stderr_file:
+        try:
+            process = subprocess.Popen(
+                command,
+                stdin=subprocess.DEVNULL,
+                stdout=stdout_file,
+                stderr=stderr_file,
+                shell=False,
+            )
+        except OSError:
+            raise ReviewError("Could not launch REA. No evidence was saved.") from None
+        try:
+            returncode = process.wait(timeout=REA_TIMEOUT_SECONDS)
+        except subprocess.TimeoutExpired:
+            _terminate_process_tree(process)
+            raise ReviewError(
+                f"REA timed out after {REA_TIMEOUT_SECONDS} seconds; "
+                "its process tree was stopped. No evidence was saved."
+            ) from None
+        except KeyboardInterrupt:
+            _terminate_process_tree(process)
+            raise ReviewError("REA analysis cancelled; no evidence was saved.") from None
+
+        if returncode != 0:
+            raise ReviewError(
+                f"REA exited with status {returncode}. "
+                "No evidence was saved; check the target and REA capabilities."
+            )
+        stdout_file.seek(0)
+        raw_bytes = stdout_file.read(MAX_EVIDENCE_CHARS + 1)
+        if not raw_bytes or len(raw_bytes) > MAX_EVIDENCE_CHARS:
+            raise ReviewError("REA evidence was empty or exceeded the size limit.")
+        try:
+            raw = raw_bytes.decode("utf-8")
+        except UnicodeError:
+            raise ReviewError("REA evidence was not valid UTF-8.") from None
+        return raw
+
+
 def run_review(target, *, approved=False, storage_root=None):
-    """Inspect an existing local application directory with REA's static JS lane."""
+    """Inspect an existing authorized application directory with static REA."""
     if approved is not True:
         raise ReviewError("Explicit operator approval (--approve) is required.")
     try:
@@ -37,17 +110,7 @@ def run_review(target, *, approved=False, storage_root=None):
         npm, "--yes", REA_PACKAGE,
         "analyze-javascript-application", str(source), "--json",
     ]
-    try:
-        result = subprocess.run(
-            command, capture_output=True, text=True, timeout=180, check=False,
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        raise ReviewError("REA could not complete; no evidence was saved.") from None
-    if result.returncode != 0:
-        raise ReviewError("REA reported an unsuccessful analysis; no evidence was saved.")
-    raw = result.stdout
-    if not raw or len(raw) > MAX_EVIDENCE_CHARS:
-        raise ReviewError("REA evidence was empty or exceeded the size limit.")
+    raw = _collect_static_evidence(command)
     try:
         evidence = json.loads(raw)
     except (ValueError, TypeError):
@@ -69,7 +132,7 @@ def run_review(target, *, approved=False, storage_root=None):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Manually capture untrusted static REA evidence into ignored local work/."
+        description="Manually capture untrusted REA evidence in local work/."
     )
     parser.add_argument("--target", required=True, help="Existing local JS/Electron app directory")
     parser.add_argument(
