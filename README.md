@@ -123,3 +123,7 @@ The server binds only to loopback and serves an allowlist rooted in `viewer`, pl
 There is no self-modification, model tool execution, arbitrary shell endpoint, automatic credential collection, telemetry, background webcam activation, or public internet server. Another malicious local process under your Windows account remains outside this app's security boundary. Public hosting would need authentication and per-user storage before it could safely serve personal notes; do not expose port 4700 to a LAN or tunnel.
 
 Implementation traceability: [16-prompt acceptance map](docs/requirements.md). Desktop details: [desktop guide](desktop/README.md).
+
+## Skill Forge (v0.4.0)
+
+In Settings → Skill Forge, ARKUS supports AI-authored **declarative numeric skills** through its existing optional model provider, with free offline manual JSON authoring. The available operations are add, subtract, multiply, divide, percentage, average and clamp. Each skill is a bounded JSON definition, tested in the built-in safe calculation engine and explicitly activated before use. Every skill is isolated to its project and retained locally across sessions. No third-party Brahma source code is included. **This is not general Python code generation or self-modifying ARKUS:** there is deliberately no arbitrary script execution, automatic GitHub push, external system control or unreviewed dynamic Python module loading. Gemini requires separately configured API access and may incur provider charges. Never commit a Google API key to GitHub.
