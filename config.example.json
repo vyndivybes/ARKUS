@@ -8,5 +8,6 @@
   "enable_google_search": false,
   "enable_gemini_live": false,
   "allow_unconstrained_live_token": false,
-  "mcp_servers": []
+  "mcp_servers": [],
+  "enable_smart_home": false
 }
