@@ -4,5 +4,8 @@
   "api_key": "",
   "allow_paid_models": false,
   "aliases": {},
-  "verified_models": []
+  "verified_models": [],
+  "enable_google_search": false,
+  "enable_gemini_live": false,
+  "mcp_servers": []
 }
