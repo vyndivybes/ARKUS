@@ -581,7 +581,23 @@ export function runProbe(){const checks=[['finish window is 900ms',FINISH_MS===9
 liveVoice=createLiveVoice({
   getToken:()=>api('/live/token',{}),
   getCameraFrame:()=>cameraStream && $('cameraLiveConsent').checked ? frame($('cameraPreview'),640) : null,
-  callTool:(name,arguments_)=>api('/live/tool',{name,arguments:arguments_}),
+  callTool:async(name,arguments_)=>{
+    if(name==='list_project_files')return api('/workspace/files',{});
+    if(name==='read_project_file')return api('/workspace/read',{name:arguments_.name});
+    if(name==='write_project_file'){
+      const filename=arguments_?.name;
+      if(typeof filename!=='string'||typeof arguments_?.content!=='string')
+        throw new Error('Invalid project draft file proposal.');
+      if(!window.confirm('ARKUS proposes to '+(arguments_.replace?'REPLACE':'create')+
+        ' project file '+filename+'. Approve saving this text/code draft? The code will NOT execute.')){
+        throw new Error('User declined the project file write.');
+      }
+      const saved=await api('/workspace/write',{name:filename,content:arguments_.content,
+                                              replace:arguments_.replace===true,approved:true});
+      await loadDraftFiles();return saved;
+    }
+    return api('/live/tool',{name,arguments:arguments_});
+  },
   onExchange:(user,assistant)=>api('/live/history',{user,assistant}),
   onToolResult:(name,result)=>{
     if(name==='remember_note'){refreshGraph().catch(error=>toast(error.message));}
