@@ -120,9 +120,26 @@ def run_review(target, *, approved=False, storage_root=None, source_paths=None, 
         raise ReviewError("Node.js npm/npx is unavailable on PATH.")
     command = [
         npm, "--yes", REA_PACKAGE,
-        "analyze-javascript-application", str(source), "--json",
-        "--filter-output", "evidence_id,normalized_result.statistics",
+        "analyze-javascript-application", str(source),
     ]
+    if source_paths is not None:
+        if not isinstance(source_paths, list) or not 1 <= len(source_paths) <= 16:
+            raise ReviewError("Select 1 to 16 source files under the analysis directory.")
+        for relative in source_paths:
+            if (not isinstance(relative, str) or not 1 <= len(relative) <= 240
+                    or relative.startswith("/") or "\\\\" in relative
+                    or ":" in relative or any(part in ("", ".", "..")
+                    for part in relative.split("/"))):
+                raise ReviewError("Source paths must be artifact-relative, e.g. assets/index.js.")
+            candidate = source.joinpath(*relative.split("/")).resolve()
+            if not candidate.is_relative_to(source) or not candidate.is_file():
+                raise ReviewError(f"Selected source file is missing or outside target: {relative}")
+            command.extend(["--source-path", relative])
+    selection_field = ",normalized_result.source_selection" if summary else ""
+    command.extend([
+        "--json", "--filter-output",
+        "evidence_id,normalized_result.statistics" + selection_field,
+    ])
     raw = _collect_static_evidence(command)
     try:
         evidence = json.loads(raw)
