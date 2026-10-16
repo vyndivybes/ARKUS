@@ -18,6 +18,8 @@ class BackupTests(unittest.TestCase):
         (self.data / "projects" / "general").mkdir(parents=True)
         (self.data / "projects" / "general" / "history.json").write_text('[{"role":"user","content":"Remember QA"}]', encoding="utf-8")
         (self.data / "projects.json").write_text('{"version":1}', encoding="utf-8")
+        (self.data / "notes" / "captures").mkdir(parents=True)
+        (self.data / "notes" / "captures" / "record.md").write_text("My stored note", encoding="utf-8")
 
     def tearDown(self):
         self.temp.cleanup()
@@ -30,6 +32,7 @@ class BackupTests(unittest.TestCase):
         self.assertGreater(result["files"],0)
         with zipfile.ZipFile(archive) as z:
             self.assertIn("projects/general/history.json",z.namelist())
+            self.assertIn("notes/captures/record.md",z.namelist())
             self.assertNotIn("config.json",z.namelist())
             self.assertNotIn("focus-ledger.jsonl",z.namelist())
             self.assertNotIn("DO_NOT_EXPORT",repr([z.read(n) for n in z.namelist()]))
