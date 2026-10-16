@@ -133,7 +133,8 @@ app.whenReady().then(async () => {
   research=createResearchWindow(mainWindow);
   ipcMain.handle('research-action',async(event,action,value)=>{
     if(!mainWindow || event.sender!==mainWindow.webContents ||
-       !['open','read','find','search','close'].includes(action))throw Error('Untrusted research request');
+       event.senderFrame!==mainWindow.webContents.mainFrame ||
+       !['open','read','find','search','close','review'].includes(action))throw Error('Untrusted research request');
     return research.perform(action,value);
   });
   const editDraft=createDraftEditor({dataDir:app.getPath('userData')});
