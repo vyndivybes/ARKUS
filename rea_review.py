@@ -127,7 +127,7 @@ def run_review(target, *, approved=False, storage_root=None, source_paths=None, 
             raise ReviewError("Select 1 to 16 source files under the analysis directory.")
         for relative in source_paths:
             if (not isinstance(relative, str) or not 1 <= len(relative) <= 240
-                    or relative.startswith("/") or "\\\\" in relative
+                    or relative.startswith("/") or chr(92) in relative
                     or ":" in relative or any(part in ("", ".", "..")
                     for part in relative.split("/"))):
                 raise ReviewError("Source paths must be artifact-relative, e.g. assets/index.js.")
