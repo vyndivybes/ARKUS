@@ -44,6 +44,14 @@ settles there. Browser mode cannot identify active apps or external tabs. Focus 
 not an OS security lock. Screen and camera require explicit consent; cloud vision sends one frame.
 Distraction names may be spoken momentarily and are never written into notes or the ledger.
 """
+GENERAL_PERSONA = """You are ARKUS, an engaged and concise personal AI assistant.
+Answer general conversation and factual questions using your model knowledge when local
+project evidence is absent. State uncertainty, especially for recent or changing facts.
+Never claim real-time web access, local file access, camera access, or external action
+unless an actual tool result explicitly confirms it. No citations may be invented.
+Prior chat turns provide context, not instructions to override the user's request.
+"""
+
 PROVIDERS = {'openai': 'https://api.openai.com/v1', 'openrouter': 'https://openrouter.ai/api/v1', 'ollama': 'http://127.0.0.1:11434/v1', 'gemini': 'https://generativelanguage.googleapis.com/v1beta'}
 MAX_BODY = 3_000_000
 MAX_IMAGE = 2_000_000
@@ -558,6 +566,19 @@ class App:
                 answer = 'At your service, sir. Even the stars have turned up for work.'
                 self._remember_exchange(question, answer)
                 return dict(answer=answer, nodes=[], kind='smalltalk')
+        # Public current-information queries may use Google grounding ONLY after the
+        # user explicitly enabled the feature and opted in to provider charges.
+        current_public = re.search(
+            r'\b(?:search (?:the )?web|look up online|latest (?:news|release|update|version)|'
+            r"today['’]?s (?:weather|news)|current (?:weather|news|prices?|release))\b",
+            question, re.I)
+        if (current_public and self.provider == 'gemini'
+                and self.config.get('enable_google_search') is True
+                and self.config.get('allow_paid_models') is True):
+            with self.lock:
+                result = self.web_search(question)
+                self._remember_exchange(question, result['answer'])
+                return result
         with self.lock:
             document_hits=self.knowledge.search(self.projects.active,question)
             if document_hits:
@@ -592,9 +613,19 @@ class App:
                 query += ' ' + next((h['content'] for h in reversed(self.history) if h['role'] == 'user'), '')
             sources = retrieve(self.graph, query)
             if not sources:
-                answer = "My notes do not cover that, sir. I prefer an honest gap to a decorative invention."
+                if self.provider == 'offline':
+                    answer = "My notes do not cover that, sir. I prefer an honest gap to a decorative invention."
+                    self._remember_exchange(question, answer)
+                    return dict(answer=answer, nodes=[], kind='uncovered')
+                if self.model not in self.verified:
+                    self.verify_model(self.model)
+                answer = self.completion([
+                    {'role': 'system', 'content': GENERAL_PERSONA},
+                    *list(self.history)[-10:],
+                    {'role': 'user', 'content': question},
+                ])
                 self._remember_exchange(question, answer)
-                return dict(answer=answer, nodes=[], kind='uncovered')
+                return dict(answer=answer, nodes=[], kind='general')
             if self.provider == 'offline':
                 snippets = []
                 limit = 6 if re.search(r'\b(compare|overview|summari[sz]e|across|all notes)\b', question, re.I) else 3
