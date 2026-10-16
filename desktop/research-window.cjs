@@ -7,6 +7,7 @@ function createResearchWindow(owner){
  const researchSession=session.fromPartition(partition,{cache:false});
  researchSession.setPermissionRequestHandler((_wc,_permission,callback)=>callback(false));
  researchSession.setPermissionCheckHandler(()=>false);
+ researchSession.on('will-download',(event)=>event.preventDefault()); // Research can never create a download.
  // Block unapproved cross-host requests and scheme navigations, including redirects.
  researchSession.webRequest.onBeforeRequest((details,callback)=>{
    if(!['GET','HEAD'].includes(details.method)||!details.url.startsWith('https://'))return callback({cancel:true});
