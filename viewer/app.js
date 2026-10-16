@@ -374,7 +374,8 @@ function stopPosture(message='Posture awareness is off. No frames or landmarks l
 async function enablePosture(){
   if(!$('postureConsent').checked&&!$('gestureConsent').checked){stopPosture();return;}
   if(!cameraStream){$('postureConsent').checked=false;$('gestureConsent').checked=false;toast('Enable the local camera preview first, then opt into local awareness or gestures.');return;}
-  const generation=++postureGeneration;postureStarting=true;$('postureStatus').textContent='Loading local posture model… No frame will be uploaded.';
+  postureController?.stop();postureController=null;gestureGate=new GestureGate();
+  const generation=++postureGeneration;postureStarting=true;$('postureStatus').textContent='Loading local pose model… No frame will be uploaded.';
   try{
     const {createLocalPosture}=await import('/posture.js');
     if(generation!==postureGeneration)return;
