@@ -221,7 +221,12 @@ class App:
                 raise UserError('A Live token was just requested. Avoid repeated sessions.',429)
             self._last_live_token_at=time.monotonic()
             try:
-                return {**LiveTokenIssuer(self.key).create(model), "project":self.projects.active}
+                issuer=LiveTokenIssuer(self.key)
+                if self.config.get('allow_unconstrained_live_token') is True:
+                    result=issuer.create(model,allow_unconstrained_fallback=True)
+                else:
+                    result=issuer.create(model)
+                return {**result, "project":self.projects.active}
             except LiveTokenError as exc:
                 raise UserError(str(exc),502) from None
 

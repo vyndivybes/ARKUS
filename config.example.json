@@ -7,5 +7,6 @@
   "verified_models": [],
   "enable_google_search": false,
   "enable_gemini_live": false,
+  "allow_unconstrained_live_token": false,
   "mcp_servers": []
 }
