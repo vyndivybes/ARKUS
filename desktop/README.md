@@ -19,3 +19,7 @@ The package sets `asar: false` and includes the desktop, backend and explicitly 
 3. Retarget from the card; remain in ARKUS and confirm no immediate self-lock. Switch to the intended app, allow two fresh ticks, and confirm lock.
 4. Decline microphone/camera requests and confirm the viewer explains denial. Screen capture must always use the explicit display-choice dialog, never an automatically chosen source. Cancel must deny capture. Explicitly select one display, stop sharing in the viewer, and confirm capture stops. No system audio should be captured.
 5. Close the main window; confirm both the countdown card and child Python server close. Check no keys, titles, app names or full URLs appear in public diagnostics or persisted focus records.
+
+## Governed read-only research plans
+
+The renderer may queue up to five allowlisted public HTTPS URLs, but each page still requires a separate explicit approval before the isolated Electron research window opens and reads it. A native `research-action('review',url)` serializes open and bounded text extraction and restricts cross-host redirects and interactive network methods. The owning main frame alone may invoke the IPC method. The plan never submits forms, logs into sites, controls another browser, saves user credentials or executes AI-generated actions. Cancelling in-flight work invalidates stored results but does not forcibly terminate a navigation already started. Public content is untrusted; only plain title, URL and a bounded excerpt are displayed.
