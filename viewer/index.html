@@ -41,6 +41,7 @@
 <div class="row"><label>X mm<input id="cadPosX" type="number" value="0" min="-500" max="500"></label><label>Y mm<input id="cadPosY" type="number" value="0" min="-500" max="500"></label><label>Z mm<input id="cadPosZ" type="number" value="0" min="-500" max="500"></label></div>
 <button id="cadAddPart" type="button">Add current shape as part</button>
 <label>Editable parts (JSON)<textarea id="cadAssembly" rows="5" spellcheck="false" placeholder='[{"shape":"box","dimensions":{"length":40,"width":20,"height":10},"position":[0,0,0]}]'></textarea></label>
+<button type="button" id="cadPreviewButton" class="secondary">Preview 3D assembly</button><canvas id="cadPreviewCanvas" width="620" height="260" hidden style="max-width:100%;background:#0a161c;border-radius:10px;touch-action:none" aria-label="Interactive 3D assembly preview"></canvas>
 <div class="row"><button type="button" id="cadCreate">Save new model</button><button type="button" id="cadRevise" class="secondary">Save revision</button><button type="button" id="cadExport" class="secondary">Export STL</button></div>
 <div id="cadModels" class="workflow-list">No saved CAD assemblies.</div><p id="cadAssemblyStatus" role="status"></p>
 </details>
