@@ -1,5 +1,6 @@
 """Gemini Live scoped token provisioning: no private API keys in browser responses."""
 import json
+import io
 import os
 import tempfile
 import unittest
@@ -78,6 +79,37 @@ class LiveTokenTests(unittest.TestCase):
         finally:
             server.shutdown()
             server.server_close()
+
+
+    def test_live_http_400_reports_safe_structured_reason(self):
+        error_body=json.dumps({"error":{"code":400,"status":"INVALID_ARGUMENT",
+            "message":"PRIVATE_PROVIDER_MESSAGE_API_KEY_DO_NOT_COPY"}}).encode()
+        with patch("live_tokens.urllib.request.urlopen",
+                   side_effect=HTTPError("https://generativelanguage.googleapis.com/v1beta/auth_tokens",
+                                         400,"PRIVATE_PROVIDER_MESSAGE_API_KEY_DO_NOT_COPY",
+                                         {},io.BytesIO(error_body))):
+            with self.assertRaises(LiveTokenError) as caught:
+                LiveTokenIssuer("PRIVATE_TEST_KEY_123").create("gemini-3.1-flash-live-preview")
+        explanation=str(caught.exception)
+        self.assertIn("INVALID_ARGUMENT",explanation)
+        self.assertIn("Live",explanation)
+        self.assertNotIn("PRIVATE_PROVIDER_MESSAGE",explanation)
+        self.assertNotIn("PRIVATE_TEST_KEY_123",explanation)
+
+    def test_oauth_client_id_is_not_a_gemini_api_key(self):
+        client_id="1234567890-abcdefghijklmnop.apps.googleusercontent.com"
+        with self.assertRaisesRegex(LiveTokenError,"OAuth client ID"):
+            LiveTokenIssuer(client_id).create("gemini-3.8-live")
+
+    def test_default_live_model_is_supported_current_recommendation(self):
+        app=self.app()
+        del app.config["live_model"]
+        with patch("server.LiveTokenIssuer") as mock:
+            mock.return_value.create.return_value={
+                "token":"auth_tokens/single_use_sample","model":"gemini-3.8-live",
+                "expires_at":"2026-10-16T15:00:00Z"}
+            app.live_token()
+            mock.return_value.create.assert_called_once_with("gemini-3.8-live")
 
     def test_invalid_response_fails_without_key_or_provider_body(self):
         with patch("live_tokens.urllib.request.urlopen") as request:
