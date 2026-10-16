@@ -549,6 +549,13 @@ export function runProbe(){const checks=[['finish window is 900ms',FINISH_MS===9
 liveVoice=createLiveVoice({
   getToken:()=>api('/live/token',{}),
   getCameraFrame:()=>cameraStream && $('cameraLiveConsent').checked ? frame($('cameraPreview'),640) : null,
+  callTool:(name,arguments_)=>api('/live/tool',{name,arguments:arguments_}),
+  onExchange:(user,assistant)=>api('/live/history',{user,assistant}),
+  onToolResult:(name,result)=>{
+    if(name==='remember_note'){refreshGraph().catch(error=>toast(error.message));}
+    if(name==='set_reminder'){refreshWorkflows(false).catch(error=>toast(error.message));}
+    if(result?.error)toast(result.error);
+  },
   onState:value=>{
     status('Live · '+value);
     updatePrivacy();

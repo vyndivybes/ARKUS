@@ -11,7 +11,10 @@ test('setup binds exact model and speech-only modalities with no executable tool
   const setup=setupMessage('gemini-3.1-flash-live-preview').setup;
   assert.equal(setup.model,'models/gemini-3.1-flash-live-preview');
   assert.deepEqual(setup.generationConfig.responseModalities,['AUDIO']);
-  assert.equal(setup.tools,undefined);
+  assert.deepEqual(setup.tools[0].functionDeclarations.map(d=>d.name),[
+    'get_briefing','search_knowledge','remember_note','set_reminder'
+  ]);
+  assert.ok(!JSON.stringify(setup.tools).includes('run_shell'));
   assert.throws(()=>setupMessage('../wrong-model'));
 });
 test('microphone PCM resampling, clipping and 24k speaker conversion',()=>{
@@ -36,7 +39,8 @@ test('audio responses, interrupt and final transcription, unwanted tools refused
   assert.deepEqual(message.audio,['AQI=']);
   assert.equal(message.inputText,'Hello');
   assert.equal(message.interrupted,true);
-  assert.equal(parseLiveMessage({toolCall:{functionCalls:[]}}).type,'tool_refused');
+  assert.equal(parseLiveMessage({toolCall:{functionCalls:[]}}).type,'tool_call');
+  assert.equal(parseLiveMessage({toolCallCancellation:{ids:['old']}}).type,'tool_cancelled');
   assert.equal(parseLiveMessage({setupComplete:{}}).type,'ready');
 });
 test('a stopped voice controller never creates or persists credentials',()=>{
@@ -143,4 +147,61 @@ test('camera is never sent before opt-in and stops with the live session', async
     session.stop();
     assert.equal(session.sendVideoFrame(),false);
   }finally{globalThis.WebSocket=oldSocket;}
+});
+
+test('Live model tool call uses the local gateway and returns matched function response',async()=>{
+  const saved={AudioContext:globalThis.AudioContext,AudioWorkletNode:globalThis.AudioWorkletNode,
+      WebSocket:globalThis.WebSocket,navigator:globalThis.navigator};
+  let socket,requests=[],exchanges=[];
+  class FakeAudio {
+    constructor(){this.sampleRate=48000;this.destination={};this.audioWorklet={addModule:async()=>{}};}
+    resume(){return Promise.resolve()} close(){return Promise.resolve()}
+    createMediaStreamSource(){return {connect(){},disconnect(){}}}
+  }
+  class FakeNode {constructor(){this.port={onmessage:null}}connect(){}disconnect(){}}
+  class FakeSocket{
+    static OPEN=1;
+    constructor(){socket=this;this.readyState=1;this.bufferedAmount=0;this.sent=[]}
+    send(s){this.sent.push(JSON.parse(s))}
+    close(){this.readyState=3}
+  }
+  try{
+    globalThis.AudioContext=FakeAudio;globalThis.AudioWorkletNode=FakeNode;globalThis.WebSocket=FakeSocket;
+    Object.defineProperty(globalThis,'navigator',{configurable:true,value:{mediaDevices:{getUserMedia:async()=>({getTracks:()=>[{stop(){}}]})}}});
+    const voice=createLiveVoice({
+      getToken:async()=>({token:'auth_tokens/for-test-123',model:'gemini-3.1-flash-live-preview'}),
+      callTool:async(name,args)=>{requests.push([name,args]);return {answer:'Reminded'};},
+      onExchange:async(a,b)=>{exchanges.push([a,b])}
+    });
+    await voice.start();socket.onopen();
+    await socket.onmessage({data:JSON.stringify({setupComplete:{}})});
+    assert.equal(voice.active,true);
+    await socket.onmessage({data:JSON.stringify({toolCall:{functionCalls:[
+      {id:'call-1',name:'set_reminder',args:{when:'2030-01-02T15:30',message:'Alpha'}}
+    ]}})});
+    assert.deepEqual(requests,[['set_reminder',{when:'2030-01-02T15:30',message:'Alpha'}]]);
+    const response=socket.sent.at(-1).toolResponse.functionResponses[0];
+    assert.equal(response.id,'call-1');
+    assert.equal(response.name,'set_reminder');
+    assert.equal(response.response.result.answer,'Reminded');
+    await socket.onmessage({data:JSON.stringify({serverContent:{
+      inputTranscription:{text:'Remind me about alpha.'},
+      outputTranscription:{text:'Your reminder is set.'},
+      turnComplete:true
+    }})});
+    assert.deepEqual(exchanges,[['Remind me about alpha.','Your reminder is set.']]);
+    voice.stop();
+  }finally{
+    Object.defineProperty(globalThis,'navigator',{configurable:true,value:saved.navigator});
+    for(const key of ['AudioContext','AudioWorkletNode','WebSocket']){
+      if(saved[key]===undefined)delete globalThis[key];else globalThis[key]=saved[key];
+    }
+  }
+});
+test('unknown tool requests never invoke local actions', async()=>{
+  const calls=[];
+  const voice=createLiveVoice({getToken:async()=>{throw Error('no provider needed')},callTool:async(name)=>calls.push(name)});
+  assert.equal(voice.active,false);
+  voice.stop();
+  assert.deepEqual(calls,[]);
 });
