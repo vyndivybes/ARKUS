@@ -10,17 +10,17 @@ class MCPTests(unittest.TestCase):
    with self.assertRaises(MCPError):MCPGateway([{"name":"x","url":url,"enabled":True}])
  def test_modern_protocol_tools_list(self):
   response={"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"search_notes","description":"Local search","inputSchema":{"type":"object"},"annotations":{"readOnlyHint":True}},{"name":"delete","annotations":{"readOnlyHint":False}}]}}
-  with patch("mcp_gateway.urllib.request.urlopen") as request:
-   request.return_value.__enter__.return_value.read.return_value=json.dumps(response).encode()
+  with patch("mcp_gateway.urllib.request.build_opener") as request:
+   request.return_value.open.return_value.__enter__.return_value.read.return_value=json.dumps(response).encode()
    tools=self.gateway.discover("local")
    self.assertEqual([x["name"] for x in tools],["search_notes"])
-   headers=request.call_args.args[0].headers
+   headers=request.return_value.open.call_args.args[0].headers
    self.assertEqual(headers["Mcp-method"],"tools/list")
  def test_call_requires_explicit_approval_and_read_only_allowlist(self):
   with self.assertRaises(MCPError):self.gateway.call("local","search_notes",{},approved=False)
   with self.assertRaises(MCPError):self.gateway.call("local","delete",{},approved=True)
   with patch.object(self.gateway,"discover",return_value=[{"name":"search_notes","annotations":{"readOnlyHint":True}}]):
-   with patch("mcp_gateway.urllib.request.urlopen") as request:
-    request.return_value.__enter__.return_value.read.return_value=json.dumps({"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"found"}]}}).encode()
+   with patch("mcp_gateway.urllib.request.build_opener") as request:
+    request.return_value.open.return_value.__enter__.return_value.read.return_value=json.dumps({"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"found"}]}}).encode()
     result=self.gateway.call("local","search_notes",{"q":"test"},approved=True)
     self.assertEqual(result["content"][0]["text"],"found")
