@@ -75,6 +75,23 @@ class ReminderAggregationTests(unittest.TestCase):
             self.assertEqual({x["project"] for x in due},{"general","engineering"})
             self.assertEqual(len(due),2)
 
+class AppBackupTests(unittest.TestCase):
+    def test_app_backup_creates_snapshot_outside_live_directory(self):
+        import os
+        from unittest.mock import patch
+        from server import App
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp)
+            with patch.dict(os.environ, {"ARKUS_CONFIG":str(root/"not-configured.json")}):
+                app=App(root/"arkus")
+                app.remember("Preserve this QA note for recovery")
+                info=app.backup_projects()
+                archive=Path(info["archive"])
+                self.assertTrue(archive.exists())
+                self.assertFalse(archive.is_relative_to(app.data))
+                with zipfile.ZipFile(archive) as z:
+                    self.assertTrue(any(n.endswith(".md") for n in z.namelist()))
+
 
 if __name__=="__main__":
     unittest.main()
