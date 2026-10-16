@@ -1,3 +1,4 @@
+import {createCameraCapture} from './camera_capture.js';
 import {createLiveVoice} from './live_voice.js';
 import {classifyGesture,GestureGate} from './gestures.js';
 // One finish window for the full spoken thought; no organ starts this microphone.
@@ -14,7 +15,7 @@ let screenStream, cameraStream, watchTimer, previousPixels, stillSince = 0, last
 let postureController, postureGeneration=0, postureStarting=false;
 let gestureGate=new GestureGate(),gestureIndex=0,cadSelected=null,cadPreviewSession=null;
 let postureWrites=Promise.resolve();
-let focusState = {}, eventSequence = 0, reliefUntil = 0, recognizer, listening = false, speechBuffer = '', finishTimer, toastTimer, liveVoice;
+let focusState = {}, eventSequence = 0, reliefUntil = 0, recognizer, listening = false, speechBuffer = '', finishTimer, toastTimer, liveVoice, liveProject;
 const colors = ['#75e9cc','#e7b16d','#7b9eea','#b690dc','#81c5e3','#d388ab','#b1c788'];
 const groupColors = new Map();
 const colorFor = group => {if(!groupColors.has(group)) groupColors.set(group, colors[groupColors.size % colors.length]); return groupColors.get(group);};
@@ -49,6 +50,9 @@ function speak(text) {
   speechSynthesis.speak(utterance);
 }
 async function api(path, body) {
+  if(body!==undefined && (path.startsWith('/workspace/')||path.startsWith('/live/'))){
+    body={...body,project:body.project??document.body.dataset.project};
+  }
   if(body !== undefined && !token) {const session=await fetch('/api/session',{cache:'no-store'}); if(!session.ok) throw new Error('Local session unavailable.'); token=(await session.json()).token;}
   const response=await fetch(path,{method:body===undefined?'GET':'POST',cache:'no-store',headers:body===undefined?{}:{'Content-Type':'application/json','X-Arkus-Token':token},body:body===undefined?undefined:JSON.stringify(body)});
   let data; try {data=await response.json();} catch {throw new Error('The server returned an unreadable response.');}
@@ -99,6 +103,7 @@ async function activateProject(path,payload){
   cadPreviewSession?.close();cadPreviewSession=null;$('cadPreviewCanvas').hidden=true;cadSelected=null;
   liveVoice?.stop();
   const result=await api(path,payload);
+  $('draftFilename').value='';$('draftContent').value='';
   $('source').hidden=true;
   if(sceneView)sceneView.positions=new Map();
   await refreshGraph(result.graph);
@@ -481,8 +486,27 @@ async function startScreen(){
   try{const stream=await navigator.mediaDevices.getDisplayMedia({video:{displaySurface:'monitor'},audio:false});stopScreen();screenStream=stream;$('screenPreview').srcObject=stream;$('screenPreview').hidden=false;$('stopScreen').disabled=false;$('askScreen').disabled=false;stream.getVideoTracks()[0].addEventListener('ended',stopScreen);const surface=stream.getVideoTracks()[0].getSettings().displaySurface;toast(surface==='monitor'?'Entire monitor shared locally. Frames send only with your consent.':'Single tab or window shared. Local watch requires the entire monitor.');updatePrivacy();}catch(e){toast(`Screen sharing: ${e.message}`);}
 }
 function stopScreen(){if(watchTimer)api('/watch',{enabled:false}).catch(()=>{});clearInterval(watchTimer);watchTimer=null;screenStream?.getTracks().forEach(t=>t.stop());screenStream=null;previousPixels=null;stillSince=0;$('screenPreview').srcObject=null;$('screenPreview').hidden=true;$('stopScreen').disabled=true;$('askScreen').disabled=true;$('watch').checked=false;$('screenConsent').checked=false;$('watchCloud').checked=false;$('watchStatus').textContent='Screen watch is off. No screen content is sent in chat.';updatePrivacy();}
-async function startCamera(){try{if(!navigator.mediaDevices?.getUserMedia)throw new Error('Camera requires localhost or HTTPS.');const stream=await navigator.mediaDevices.getUserMedia({video:{width:{ideal:640},height:{ideal:480}},audio:false});stopCamera();cameraStream=stream;$('cameraPreview').srcObject=stream;$('cameraPreview').hidden=false;$('stopCamera').disabled=false;$('askCamera').disabled=false;stream.getVideoTracks()[0].addEventListener('ended',stopCamera);if(!listening&&!liveVoice?.active){toast('My ears are off, sir — tap the ear button and just talk.');speak('My ears are off, sir — tap the ear button and just talk.');}updatePrivacy();}catch(e){toast(`Camera: ${e.message}`);}}
-function stopCamera(){stopPosture();cameraStream?.getTracks().forEach(t=>t.stop());cameraStream=null;$('cameraPreview').srcObject=null;$('cameraPreview').hidden=true;$('stopCamera').disabled=true;$('askCamera').disabled=true;$('cameraConsent').checked=false;$('cameraLiveConsent').checked=false;updatePrivacy();}
+const cameraCapture=createCameraCapture({
+  acquire:()=>{
+    if(!navigator.mediaDevices?.getUserMedia)throw new Error('Camera requires localhost or HTTPS.');
+    return navigator.mediaDevices.getUserMedia({video:{width:{ideal:640},height:{ideal:480}},audio:false});
+  },
+  onStream:stream=>{
+    stopPosture();cameraStream=stream;
+    $('cameraPreview').srcObject=stream;$('cameraPreview').hidden=!stream;
+    $('stopCamera').disabled=!stream;$('askCamera').disabled=!stream;
+    // Every fresh activation requires fresh cloud-sharing consent.
+    $('cameraConsent').checked=false;$('cameraLiveConsent').checked=false;
+    updatePrivacy();
+  },
+  onError:error=>toast('Camera: '+error.message)
+});
+async function startCamera(){
+  $('startCamera').disabled=true;$('stopCamera').disabled=false;
+  try{await cameraCapture.start();}
+  finally{if(!cameraCapture.connecting)$('startCamera').disabled=false;}
+}
+function stopCamera(){cameraCapture.stop();$('startCamera').disabled=false;}
 function stopPosture(message='Posture awareness is off. No frames or landmarks leave your device.'){
   const wasActive=Boolean(postureController || postureStarting);postureGeneration++;postureStarting=false;postureController?.stop();postureController=null;$('postureConsent').checked=false;$('gestureConsent').checked=false;gestureGate=new GestureGate();$('gestureStatus').textContent='Gestures off.';$('calibratePosture').disabled=true;$('postureStatus').textContent=message;
   if(wasActive){postureWrites=postureWrites.catch(()=>{}).then(()=>api('/focus/posture',{enabled:false}));postureWrites.catch(error=>toast(`Could not clear local posture state: ${error.message}`));}
@@ -579,11 +603,11 @@ async function createGalaxy(){
 export function runProbe(){const checks=[['finish window is 900ms',FINISH_MS===900],['single source flies',sourceDecision('notes',[1])==='fly'],['four sources hold cluster',sourceDecision('notes',[1,2,3,4])==='cluster'],['small talk holds camera',sourceDecision('smalltalk',[1])==='hold'],['empty sources hold camera',sourceDecision('notes',[])==='hold'],['retarget natural phrase',isRetarget("okay, I'm gonna need you to keep me in this tab")],['pixel equality is still',pixelDifference(new Uint8ClampedArray([1,2,3,255]),new Uint8ClampedArray([1,2,3,255]))===0],['watch cloud requires consent',!watchEligible({monitor:true,consent:false,stillMs:70000,cooldownMs:200000,active:true})],['watch rejects tab capture',!watchEligible({monitor:false,consent:true,stillMs:70000,cooldownMs:200000,active:true})],['watch threshold and cooldown',watchEligible({monitor:true,consent:true,stillMs:60000,cooldownMs:180000,active:true})],['watch cooldown guard',!watchEligible({monitor:true,consent:true,stillMs:70000,cooldownMs:170000,active:true})],['viewport 1440 by 900',innerWidth===1440&&innerHeight===900]];const pass=checks.every(([,ok])=>ok);document.title=`ARKUS PROBE ${pass?'PASS':'FAIL'} ${checks.filter(([,ok])=>ok).length}/${checks.length}`;const pre=document.createElement('pre');pre.id='probeResults';pre.textContent=checks.map(([name,ok])=>`${ok?'PASS':'FAIL'} ${name}`).join('\n');Object.assign(pre.style,{position:'fixed',inset:'100px 20px auto auto',zIndex:100,background:'#07151f',padding:'20px',border:'1px solid #78ddc6'});document.body.append(pre);window.arkusProbe={pass,checks};return {pass,checks};}
 
 liveVoice=createLiveVoice({
-  getToken:()=>api('/live/token',{}),
+  getToken:()=>{liveProject=document.body.dataset.project;return api('/live/token',{project:liveProject});},
   getCameraFrame:()=>cameraStream && $('cameraLiveConsent').checked ? frame($('cameraPreview'),640) : null,
   callTool:async(name,arguments_)=>{
-    if(name==='list_project_files')return api('/workspace/files',{});
-    if(name==='read_project_file')return api('/workspace/read',{name:arguments_.name});
+    if(name==='list_project_files')return api('/workspace/files',{project:liveProject});
+    if(name==='read_project_file')return api('/workspace/read',{name:arguments_.name,project:liveProject});
     if(name==='write_project_file'){
       const filename=arguments_?.name;
       if(typeof filename!=='string'||typeof arguments_?.content!=='string')
@@ -593,12 +617,12 @@ liveVoice=createLiveVoice({
         throw new Error('User declined the project file write.');
       }
       const saved=await api('/workspace/write',{name:filename,content:arguments_.content,
-                                              replace:arguments_.replace===true,approved:true});
+                                              replace:arguments_.replace===true,approved:true,project:liveProject});
       await loadDraftFiles();return saved;
     }
-    return api('/live/tool',{name,arguments:arguments_});
+    return api('/live/tool',{name,arguments:arguments_,project:liveProject});
   },
-  onExchange:(user,assistant)=>api('/live/history',{user,assistant}),
+  onExchange:(user,assistant)=>api('/live/history',{user,assistant,project:liveProject}),
   onToolResult:(name,result)=>{
     if(name==='remember_note'){refreshGraph().catch(error=>toast(error.message));}
     if(name==='set_reminder'){refreshWorkflows(false).catch(error=>toast(error.message));}

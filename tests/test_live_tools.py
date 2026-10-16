@@ -75,3 +75,17 @@ class LiveToolTests(unittest.TestCase):
             with self.assertRaises(UserError):
                 self.app.live_tool("remember_note", args)
         self.assertEqual(len(self.app.graph["nodes"]), before)
+
+    def test_stale_live_session_cannot_write_read_or_save_history_in_another_project(self):
+        self.app.create_project("Private")
+        for action in (
+            lambda:self.app.live_tool("remember_note", {"text":"from General"}, project="general"),
+            lambda:self.app.record_live_exchange("old", "old answer", project="general"),
+            lambda:self.app.write_project_draft("old.py", "pass", True, False, project="general"),
+            lambda:self.app.read_project_draft("old.py", project="general"),
+            lambda:self.app.list_project_drafts(project="general"),
+        ):
+            with self.assertRaises(UserError) as caught:action()
+            self.assertEqual(caught.exception.status,409)
+        self.assertEqual(self.app.projects.read_history(),[])
+        self.assertEqual(self.app.list_project_drafts()["files"],[])

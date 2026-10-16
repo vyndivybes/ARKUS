@@ -29,3 +29,11 @@ The packaged smoke test is `tests/desktop-smoke.cjs`. It uses a separate local p
 7. Share the entire display for screen watch. Test stillness and local pixel resets first. Opt into cloud nudges separately only when ready to send a frame. Confirm the3-minute cooldown and the visible desktop indicator. Exclusive-fullscreen overlay behavior needs testing on the destination device.
 
 The local server is not deployed as a public website. It has personal local storage and no remote-account authentication. Desktop delivery is the appropriate deployment for this build.
+
+## Live session reliability, 16 October 2026
+
+Continuation starts at main `037debb383703f37aff19ed4c012e132d52299c8`, after PRs #14–17. GitHub verification run 38853659073 and Windows publication run 38853659079 both succeeded for that exact commit. The v0.8.0-preview release has portable and setup EXEs plus SHA256 sums uploaded at 05:06 UTC. Its release target still names PR #13's commit. Publication now includes ARKUS-BUILD.json to identify the source commit and workflow run for the replaceable preview assets without rewriting historical tags.
+
+The new deterministic regression checks cover binary and Blob WebSocket JSON, microphone disconnection, provider-error cleanup, a connection deadline, oversized packets, late microphone permission and late token responses after restart. Camera tests cover late permission after stop, overlapping starts, disconnect cleanup and denied permission retry. Stale Live project requests are rejected before they can read drafts, write files, remember notes or save transcripts in another project. These tests use fake media and transport, not a real microphone, camera or provider.
+
+The protocol configuration follows Google's Live API reference at https://ai.google.dev/api/live, including a 900 ms silence window. Cloud charges remain disabled unless the user configures permission privately. No provider key or paid subscription was introduced.
