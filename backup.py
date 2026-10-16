@@ -25,6 +25,12 @@ def _supported(name):
     pieces = PurePosixPath(name).parts
     if name == "projects.json":
         return True
+    if (len(pieces)==3 and NAME.fullmatch(pieces[1])
+            and (pieces[0],pieces[2]) in {
+                ("skills","registry.json"),("parametric-cad","models.json"),
+                ("actions","history.json"),
+            }):
+        return True
     if (len(pieces)==3 and pieces[0]=="knowledge" and NAME.fullmatch(pieces[1])
             and pieces[2]=="sources.sqlite3"):
         return True

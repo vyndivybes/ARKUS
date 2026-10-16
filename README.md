@@ -205,3 +205,11 @@ Settings → Local MCP tools discovers only server-advertised `readOnlyHint:true
 **Current limitations.** This is full-text retrieval, not vector-semantic embeddings or a general folder watcher. External web results are not added to local knowledge automatically. Engineering files such as native CAD, STEP and scanned PDFs still need dedicated parsers. The Windows preview is unsigned; no automatic software upgrades are enabled.
 
 **Backup:** Existing ARKUS ZIP snapshot/restore now includes project knowledge SQLite databases as local data (up to 32 MB per database, 40 MB total archive). Credentials are still excluded. Restore remains restricted to an empty destination. If an archive exceeds these bounds, backup refuses rather than silently discarding knowledge.
+
+## Tested skill revisions and recoverable project tooling
+
+Active calculation skills now support independently authored expected-result examples and candidate upgrades. In Skill Forge, select **Prepare upgrade**, edit the specification and its `tests` examples, then **Draft upgrade**. A candidate retains the active skill's name and input interface. Testing compares actual results with the expected values. A failing example never replaces the working revision. **Activate skill** swaps a passing candidate atomically; **Roll back** restores its preceding tested revision. Concurrent stale candidates are refused. This remains a bounded declarative arithmetic engine, not execution or installation of generated Python or JavaScript.
+
+The project file workshop can **Check saved Python/JSON syntax**. It parses the named saved file and reports syntax errors without importing or executing that file. Passing syntax does not prove correct behavior or safe execution. Draft validation includes a content checksum in the API response.
+
+Project backups now include calculation-skill revisions, parametric CAD registries and controlled-action history. Arbitrary scripts, credentials and activity ledgers remain excluded. Recovery still requires an empty destination. An empty `ARKUS_NOTES_DIR` now uses the project's local notes folder rather than scanning the process working directory.

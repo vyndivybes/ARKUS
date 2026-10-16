@@ -50,7 +50,7 @@ function speak(text) {
   speechSynthesis.speak(utterance);
 }
 async function api(path, body) {
-  if(body!==undefined && (path.startsWith('/workspace/')||path.startsWith('/live/'))){
+  if(body!==undefined && (path.startsWith('/workspace/')||path.startsWith('/live/')||path.startsWith('/skills/'))){
     body={...body,project:body.project??document.body.dataset.project};
   }
   if(body !== undefined && !token) {const session=await fetch('/api/session',{cache:'no-store'}); if(!session.ok) throw new Error('Local session unavailable.'); token=(await session.json()).token;}
@@ -103,7 +103,7 @@ async function activateProject(path,payload){
   cadPreviewSession?.close();cadPreviewSession=null;$('cadPreviewCanvas').hidden=true;cadSelected=null;
   liveVoice?.stop();
   const result=await api(path,payload);
-  $('draftFilename').value='';$('draftContent').value='';
+  $('draftFilename').value='';$('draftContent').value='';$('draftValidation').textContent='';$('manualSkill').value='';
   $('source').hidden=true;
   if(sceneView)sceneView.positions=new Map();
   await refreshGraph(result.graph);
@@ -364,7 +364,7 @@ async function loadSkills(){
     if(!data.skills.length){root.textContent='No custom skills in this project.';return;}
     for(const skill of data.skills){
       const card=document.createElement('div');card.className='workflow-card';
-      const title=document.createElement('strong');title.textContent=skill.name+' · '+skill.status;
+      const title=document.createElement('strong');title.textContent=skill.name+' · revision '+skill.revision+' · '+skill.status;
       const desc=document.createElement('p');desc.textContent=skill.description+' ('+skill.operation+' · '+skill.inputs.join(', ')+')';
       card.append(title,desc);
       if(skill.status==='draft'){
@@ -384,6 +384,30 @@ async function loadSkills(){
             const message=result.output+': '+result.result;$('skillResult').textContent=message;addMessage(message);speak(message);
           }catch(e){toast(e.message);}
         });card.append(run);
+      }
+      if(skill.status==='active'){
+        const edit=document.createElement('button');edit.textContent='Prepare upgrade';edit.className='secondary';
+        edit.addEventListener('click',()=>{
+          const {name,description,operation,inputs,output,tests}=skill;
+          $('manualSkill').value=JSON.stringify({name,description,operation,inputs,output,tests},null,2);
+          $('manualSkill').focus();
+          $('skillResult').textContent='Edit the specification and add expected-result examples, then select Draft upgrade on '+skill.name+'. The active revision keeps working.';
+        });
+        const revise=document.createElement('button');revise.textContent='Draft upgrade';revise.className='secondary';
+        revise.addEventListener('click',async()=>{try{
+          const spec=JSON.parse($('manualSkill').value);
+          await api('/skills/revise',{id:skill.id,spec});await loadSkills();
+          $('skillResult').textContent='Upgrade saved as a draft. Test it before activation.';
+        }catch(error){toast(error.message);}});
+        card.append(edit,revise);
+        if(skill.supersedes){
+          const rollback=document.createElement('button');rollback.textContent='Roll back';rollback.className='secondary';
+          rollback.addEventListener('click',async()=>{
+            if(!confirm('Restore the preceding tested revision of '+skill.name+'?'))return;
+            try{await api('/skills/rollback',{id:skill.id});await loadSkills();$('skillResult').textContent='Previous revision restored.';}
+            catch(error){toast(error.message);}
+          });card.append(rollback);
+        }
       }
       root.append(card);
     }
@@ -783,6 +807,12 @@ $('cadExport').addEventListener('click',async()=>{
   try{const result=await api('/cad/export',{id:cadSelected.id});downloadCAD(result);
     $('cadAssemblyStatus').textContent=result.triangles+' triangles in STL · revision '+result.revision+'.';
   }catch(error){toast(error.message);}
+});
+$('draftValidate').addEventListener('click',async()=>{
+  try{
+    const result=await api('/workspace/validate',{name:$('draftFilename').value.trim()});
+    $('draftValidation').textContent=(result.valid?'Valid saved syntax. ':'Syntax error at line '+result.line+': ')+result.message+' No code ran.';
+  }catch(error){$('draftValidation').textContent=error.message;}
 });
 $('draftSave').addEventListener('click',async()=>{
   const name=$('draftFilename').value.trim(),content=$('draftContent').value;

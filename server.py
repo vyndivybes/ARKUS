@@ -89,7 +89,7 @@ class App:
     def __init__(self, data_dir=None, notes_dir=None):
         self.data = Path(data_dir or os.environ.get('ARKUS_DATA_DIR', ROOT / 'data')).resolve()
         self.data.mkdir(parents=True, exist_ok=True)
-        self.default_notes = Path(notes_dir or os.environ.get('ARKUS_NOTES_DIR', self.data / 'notes')).resolve()
+        self.default_notes = Path(notes_dir or os.environ.get('ARKUS_NOTES_DIR') or self.data / 'notes').resolve()
         self.default_notes.mkdir(parents=True, exist_ok=True)
         self.projects = ProjectStore(self.data, self.default_notes)
         self.companion = CompanionWorkflows(self.data)
@@ -157,6 +157,11 @@ class App:
             return self.projects.read_draft(name)
         except ProjectError as exc:
             raise UserError(str(exc),409) from None
+
+    @project_scoped
+    def validate_project_draft(self,name):
+        try:return self.projects.validate_draft(name)
+        except ProjectError as exc:raise UserError(str(exc),409) from None
 
     @project_scoped
     def write_project_draft(self,name,content,approved=False,replace=False):
@@ -266,6 +271,7 @@ class App:
         with self.lock:
             return {"skills": self.skill_forge.available(self.projects.active)}
 
+    @project_scoped
     def propose_skill(self, spec):
         with self.lock:
             try:
@@ -273,6 +279,7 @@ class App:
             except SkillError as exc:
                 raise UserError(str(exc),409) from None
 
+    @project_scoped
     def generate_skill(self, goal):
         if not isinstance(goal,str) or not 5<=len(goal)<=600:
             raise UserError("Give a concise skill description (5–600 characters).")
@@ -292,6 +299,17 @@ class App:
             raise UserError("AI did not produce a valid JSON skill; no skill saved.",502) from None
         return self.propose_skill(spec)
 
+    @project_scoped
+    def revise_skill(self,skill_id,spec):
+        try:return self.skill_forge.revise(self.projects.active,skill_id,spec)
+        except SkillError as exc:raise UserError(str(exc),409) from None
+
+    @project_scoped
+    def rollback_skill(self,skill_id):
+        try:return self.skill_forge.rollback(self.projects.active,skill_id)
+        except SkillError as exc:raise UserError(str(exc),409) from None
+
+    @project_scoped
     def validate_skill(self, skill_id):
         with self.lock:
             try:
@@ -299,6 +317,7 @@ class App:
             except SkillError as exc:
                 raise UserError(str(exc),409) from None
 
+    @project_scoped
     def activate_skill(self, skill_id):
         with self.lock:
             try:
@@ -306,6 +325,7 @@ class App:
             except SkillError as exc:
                 raise UserError(str(exc),409) from None
 
+    @project_scoped
     def execute_skill(self, name, parameters):
         with self.lock:
             try:
@@ -870,6 +890,8 @@ class Handler(BaseHTTPRequestHandler):
                 result = self.app.list_project_drafts(project=body.get("project"))
             elif path == '/workspace/read':
                 result = self.app.read_project_draft(body.get("name"), project=body.get("project"))
+            elif path == '/workspace/validate':
+                result = self.app.validate_project_draft(body.get("name"),project=body.get("project"))
             elif path == '/workspace/write':
                 result = self.app.write_project_draft(body.get("name"),body.get("content"),
                                                       body.get("approved"),body.get("replace",False), project=body.get("project"))
@@ -921,15 +943,19 @@ class Handler(BaseHTTPRequestHandler):
             elif path == '/actions/cancel':
                 result = self.app.reject_action(body.get('id'))
             elif path == '/skills/propose':
-                result = self.app.propose_skill(body.get('spec'))
+                result = self.app.propose_skill(body.get('spec'),project=body.get('project'))
             elif path == '/skills/generate':
-                result = self.app.generate_skill(body.get('goal'))
+                result = self.app.generate_skill(body.get('goal'),project=body.get('project'))
+            elif path == '/skills/revise':
+                result = self.app.revise_skill(body.get('id'),body.get('spec'),project=body.get('project'))
+            elif path == '/skills/rollback':
+                result = self.app.rollback_skill(body.get('id'),project=body.get('project'))
             elif path == '/skills/test':
-                result = self.app.validate_skill(body.get('id'))
+                result = self.app.validate_skill(body.get('id'),project=body.get('project'))
             elif path == '/skills/activate':
-                result = self.app.activate_skill(body.get('id'))
+                result = self.app.activate_skill(body.get('id'),project=body.get('project'))
             elif path == '/skills/run':
-                result = self.app.execute_skill(body.get('name'),body.get('parameters'))
+                result = self.app.execute_skill(body.get('name'),body.get('parameters'),project=body.get('project'))
             elif path == '/backup/create':
                 result = self.app.backup_projects()
             elif path == '/workflow/plan':

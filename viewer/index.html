@@ -13,6 +13,7 @@
 <label>Filename<input id="draftFilename" maxlength="80" placeholder="new-skill.py" aria-label="Project draft filename"></label>
 <label>File content<textarea id="draftContent" rows="6" spellcheck="false" aria-label="Draft file content"></textarea></label>
 <div class="row"><button id="draftSave" type="button">Save approved draft</button><button id="draftOpen" class="secondary" type="button">Open named draft</button></div>
+<button id="draftValidate" type="button" class="secondary">Check saved Python/JSON syntax</button><p id="draftValidation" role="status" class="hint"></p>
 <div id="draftFiles" class="workflow-list" aria-live="polite">No project files loaded.</div>
 </section><section><h3>Project knowledge base</h3><p>Import your selected TXT, Markdown or DOCX documents into a private SQLite full-text index. Text PDFs are supported in the Windows app; source checkouts need optional pypdf. Scanned PDFs need OCR. Maximum 2 MB and 50 documents per project.</p>
 <label>Import reference document<input type="file" id="knowledgeFile" accept=".txt,.md,.markdown,.docx,.pdf"></label>
@@ -72,6 +73,7 @@
 <p class="hint">AI drafting requires a configured, permitted provider. Free offline mode supports manual JSON proposals.</p>
 <label>Manual specification (JSON)<textarea id="manualSkill" rows="4" placeholder='{"name":"area","description":"Calculate area","operation":"multiply","inputs":["length","width"],"output":"Area"}'></textarea></label>
 <button id="createManualSkill" type="button" class="secondary">Create offline draft</button>
+<p class="hint">An upgrade keeps the same name and inputs. Add expected-result examples such as <code>"tests":[{"parameters":{"length":5,"width":4},"expected":20}]</code>. A failed example keeps the working revision active. Activated upgrades can roll back.</p>
 <div id="skillRegistry" class="workflow-list">No skills loaded.</div>
 <p id="skillResult" role="status" class="hint"></p>
 </section><section><h3>Installed and optional skills</h3><p>ARKUS shows what works now and what needs hardware, credentials, or explicit consent. No external code is run.</p>

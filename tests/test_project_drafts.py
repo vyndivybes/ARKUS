@@ -62,3 +62,23 @@ class DraftFilesTests(unittest.TestCase):
             restored=Path(outside)/"restored"
             restore_backup(target,restored)
             self.assertEqual((restored/"projects"/"general"/"drafts"/"prototype.py").read_text(),"print('draft only')")
+
+    def test_validate_saved_python_and_json_without_executing_draft_code(self):
+        marker=self.root/"must-not-exist"
+        code=f"from pathlib import Path\nPath({str(marker)!r}).write_text('unsafe')\n"
+        self.app.write_project_draft("draft.py",code,approved=True)
+        result=self.app.validate_project_draft("draft.py",project="general")
+        self.assertTrue(result["valid"]);self.assertEqual(len(result["sha256"]),64)
+        self.assertFalse(marker.exists())
+        self.app.write_project_draft("bad.py","def broken(:",approved=True)
+        result=self.app.validate_project_draft("bad.py")
+        self.assertFalse(result["valid"]);self.assertEqual(result["line"],1)
+        self.app.write_project_draft("bad.json",'{"trailing":}',approved=True)
+        self.assertFalse(self.app.validate_project_draft("bad.json")["valid"])
+        self.app.create_project("Other")
+        with self.assertRaises(UserError):self.app.validate_project_draft("draft.py",project="general")
+
+    def test_empty_notes_environment_uses_project_data_instead_of_current_directory(self):
+        with patch.dict(os.environ,{"ARKUS_NOTES_DIR":""}), patch("server.seed"), patch("server.index_notes",return_value={"nodes":[],"links":[]}):
+            isolated=App(self.root/"isolated")
+        self.assertEqual(isolated.default_notes,(self.root/"isolated"/"notes").resolve())
