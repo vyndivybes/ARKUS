@@ -134,7 +134,7 @@ class App:
         """Produce a proposed action only. No model may execute it."""
         if not isinstance(goal,str) or not 3<=len(goal.strip())<=600:
             raise UserError("Describe the action in 3–600 characters.",409)
-        pattern = re.fullmatch(r"\\s*(add|subtract|multiply|divide)\\s+(-?\\d+(?:\\.\\d+)?)\\s+(?:by|and|from)\\s+(-?\\d+(?:\\.\\d+)?)\\s*",goal,re.I)
+        pattern = re.fullmatch(r"\s*(add|subtract|multiply|divide)\s+(-?\d+(?:\.\d+)?)\s+(?:by|and|from)\s+(-?\d+(?:\.\d+)?)\s*",goal,re.I)
         if pattern:
             spec={"tool":"calculate","arguments":{"operator":pattern.group(1).lower(),
                   "a":pattern.group(2),"b":pattern.group(3)}}
