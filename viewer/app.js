@@ -1,4 +1,5 @@
 import {createLiveVoice} from './live_voice.js';
+import {classifyGesture,GestureGate} from './gestures.js';
 // One finish window for the full spoken thought; no organ starts this microphone.
 export const FINISH_MS = 900;
 export const WATCH_SAMPLE_MS = 5000;
@@ -11,6 +12,7 @@ const REDUCED_MOTION = matchMedia('(prefers-reduced-motion: reduce)').matches;
 let token, graph = {nodes: [], links: []}, sceneView, busy = false, interacted = false;
 let screenStream, cameraStream, watchTimer, previousPixels, stillSince = 0, lastNudge = 0, lastDiff = null;
 let postureController, postureGeneration=0, postureStarting=false;
+let gestureGate=new GestureGate(),gestureIndex=0,cadSelected=null,cadPreviewSession=null;
 let postureWrites=Promise.resolve();
 let focusState = {}, eventSequence = 0, reliefUntil = 0, recognizer, listening = false, speechBuffer = '', finishTimer, toastTimer, liveVoice;
 const colors = ['#75e9cc','#e7b16d','#7b9eea','#b690dc','#81c5e3','#d388ab','#b1c788'];
@@ -94,6 +96,7 @@ async function loadProjects(projects){
   return projects;
 }
 async function activateProject(path,payload){
+  cadPreviewSession?.close();cadPreviewSession=null;$('cadPreviewCanvas').hidden=true;cadSelected=null;
   liveVoice?.stop();
   const result=await api(path,payload);
   $('source').hidden=true;
@@ -103,6 +106,7 @@ async function activateProject(path,payload){
   await refreshWorkflows(false);
   await loadSkills();
   await loadActions();
+  await loadCADModels();
   restoreConversation(result.history);
   $('search').value='';renderNotes();
   toast('Workspace active: '+$('activeProject').selectedOptions[0]?.textContent);
@@ -163,6 +167,61 @@ async function refreshWorkflows(announce=true){
       }
     }
   }catch(e){$('workflowPlans').textContent='Local workflows unavailable: '+e.message;}
+}
+async function loadCADModels(){
+  const host=$('cadModels');host.replaceChildren();
+  try{
+    const state=await api('/cad/models');
+    if(!state.models.length){host.textContent='No parametric assemblies in this project.';return;}
+    for(const model of state.models){
+      const item=document.createElement('div');item.className='workflow-card';
+      const name=document.createElement('strong');name.textContent=model.name+' · revision '+model.revision;
+      const load=document.createElement('button');load.type='button';load.textContent='Edit';
+      load.addEventListener('click',async()=>{
+        try{const value=await api('/cad/get',{id:model.id});
+          cadSelected={id:value.id,revision:value.revision};
+          $('cadModelName').value=value.name;
+          $('cadAssembly').value=JSON.stringify(value.parts,null,2);
+          $('cadAssemblyStatus').textContent='Editing '+value.name+' r'+value.revision+'.';
+        }catch(e){toast(e.message);}
+      });
+      item.append(name,load);host.append(item);
+    }
+  }catch(error){host.textContent=error.message;}
+}
+function currentCADPart(){
+  const shape=$('cadShape').value;
+  const dimensions=shape==='box'
+    ?{length:Number($('cadLength').value),width:Number($('cadWidth').value),height:Number($('cadHeight').value)}
+    :shape==='cylinder'
+    ?{radius:Number($('cadRadius').value),height:Number($('cadHeight').value)}
+    :{radius:Number($('cadRadius').value),wall:Number($('cadWall').value),height:Number($('cadHeight').value)};
+  const position=['cadPosX','cadPosY','cadPosZ'].map(id=>Number($(id).value));
+  return {shape,dimensions,position};
+}
+function CADParts(){
+  const parts=JSON.parse($('cadAssembly').value);
+  if(!Array.isArray(parts)||!parts.length||parts.length>8)throw new Error('Enter a JSON array of one to eight CAD parts.');
+  return parts;
+}
+function downloadCAD(result){
+  const raw=atob(result.base64),bytes=Uint8Array.from(raw,c=>c.charCodeAt(0));
+  const url=URL.createObjectURL(new Blob([bytes],{type:'model/stl'}));
+  const anchor=document.createElement('a');anchor.href=url;anchor.download=result.name;
+  document.body.append(anchor);anchor.click();anchor.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+async function researchAction(action,value){
+  const native=window.arkusDesktop?.researchAction;
+  if(typeof native!=='function'){
+    $('researchResult').textContent='The separate reference browser requires the Windows ARKUS desktop app.';return;
+  }
+  if(action==='open'&&!confirm('Open this public HTTPS reference page in a separate isolated window?\n'+value))return;
+  try{
+    const result=await native(action,value);
+    $('researchResult').textContent=result.status==='read'
+      ?(result.title+'\n'+result.url+'\n\n'+result.text)
+      :JSON.stringify(result,null,2);
+  }catch(error){$('researchResult').textContent=error.message;}
 }
 async function showBriefing(){
   try{const b=await api('/workflow/briefing');addMessage(b.answer,'assistant');speak(b.answer);
@@ -310,19 +369,42 @@ function stopScreen(){if(watchTimer)api('/watch',{enabled:false}).catch(()=>{});
 async function startCamera(){try{if(!navigator.mediaDevices?.getUserMedia)throw new Error('Camera requires localhost or HTTPS.');const stream=await navigator.mediaDevices.getUserMedia({video:{width:{ideal:640},height:{ideal:480}},audio:false});stopCamera();cameraStream=stream;$('cameraPreview').srcObject=stream;$('cameraPreview').hidden=false;$('stopCamera').disabled=false;$('askCamera').disabled=false;stream.getVideoTracks()[0].addEventListener('ended',stopCamera);if(!listening){toast('My ears are off, sir — tap the ear button and just talk.');speak('My ears are off, sir — tap the ear button and just talk.');}updatePrivacy();}catch(e){toast(`Camera: ${e.message}`);}}
 function stopCamera(){stopPosture();cameraStream?.getTracks().forEach(t=>t.stop());cameraStream=null;$('cameraPreview').srcObject=null;$('cameraPreview').hidden=true;$('stopCamera').disabled=true;$('askCamera').disabled=true;$('cameraConsent').checked=false;updatePrivacy();}
 function stopPosture(message='Posture awareness is off. No frames or landmarks leave your device.'){
-  const wasActive=Boolean(postureController || postureStarting);postureGeneration++;postureStarting=false;postureController?.stop();postureController=null;$('postureConsent').checked=false;$('calibratePosture').disabled=true;$('postureStatus').textContent=message;
+  const wasActive=Boolean(postureController || postureStarting);postureGeneration++;postureStarting=false;postureController?.stop();postureController=null;$('postureConsent').checked=false;$('gestureConsent').checked=false;gestureGate=new GestureGate();$('gestureStatus').textContent='Gestures off.';$('calibratePosture').disabled=true;$('postureStatus').textContent=message;
   if(wasActive){postureWrites=postureWrites.catch(()=>{}).then(()=>api('/focus/posture',{enabled:false}));postureWrites.catch(error=>toast(`Could not clear local posture state: ${error.message}`));}
 }
 async function enablePosture(){
-  if(!$('postureConsent').checked){stopPosture();return;}
-  if(!cameraStream){$('postureConsent').checked=false;toast('Enable the local camera preview first, then opt into posture awareness.');return;}
-  const generation=++postureGeneration;postureStarting=true;$('postureStatus').textContent='Loading local posture model… No frame will be uploaded.';
+  if(!$('postureConsent').checked&&!$('gestureConsent').checked){stopPosture();return;}
+  if(!cameraStream){$('postureConsent').checked=false;$('gestureConsent').checked=false;toast('Enable the local camera preview first, then opt into local awareness or gestures.');return;}
+  postureController?.stop();postureController=null;gestureGate=new GestureGate();
+  const generation=++postureGeneration;postureStarting=true;$('postureStatus').textContent='Loading local pose model… No frame will be uploaded.';
   try{
     const {createLocalPosture}=await import('/posture.js');
     if(generation!==postureGeneration)return;
-    const controller=await createLocalPosture({video:$('cameraPreview'),onSample:sample=>{postureWrites=postureWrites.catch(()=>{}).then(()=>generation===postureGeneration && $('postureConsent').checked?api('/focus/posture',sample):undefined);return postureWrites;},onStatus:message=>{if(generation===postureGeneration)$('postureStatus').textContent=message;},onError:error=>{if(generation===postureGeneration)stopPosture(`Posture awareness unavailable: ${error.message}`);}});
+    const controller=await createLocalPosture({
+      video:$('cameraPreview'),
+      onSample:sample=>{
+        if(!$('postureConsent').checked)return;
+        postureWrites=postureWrites.catch(()=>{}).then(()=>generation===postureGeneration&&$('postureConsent').checked?api('/focus/posture',sample):undefined);
+        return postureWrites;
+      },
+      onLandmarks:landmarks=>{
+        if(generation!==postureGeneration||!$('gestureConsent').checked)return;
+        const action=gestureGate.accept(classifyGesture(landmarks));
+        if(!action)return;
+        if(action==='both'){
+          $('settings').hidden=!$('settings').hidden;
+          $('gestureStatus').textContent='Both arms: settings toggled.';
+        }else if(graph.nodes.length){
+          gestureIndex=(gestureIndex+(action==='right'?1:-1)+graph.nodes.length)%graph.nodes.length;
+          selectSource(graph.nodes[gestureIndex],true);
+          $('gestureStatus').textContent=(action==='right'?'Next':'Previous')+' knowledge note selected locally.';
+        }
+      },
+      onStatus:message=>{if(generation===postureGeneration)$('postureStatus').textContent=message;},
+      onError:error=>{if(generation===postureGeneration)stopPosture(`Local landmarks unavailable: ${error.message}`);}
+    });
     if(generation!==postureGeneration){controller.stop();return;}
-    postureController=controller;postureStarting=false;$('calibratePosture').disabled=false;$('postureStatus').textContent='Local model ready. Sit comfortably with nose and shoulders visible, then calibrate.';
+    postureController=controller;postureStarting=false;$('calibratePosture').disabled=!$('postureConsent').checked;$('postureStatus').textContent='Local pose model ready.';if($('gestureConsent').checked)$('gestureStatus').textContent='Gesture control active: hold a raised arm for 650 ms. Camera data stays on this device.';
   }catch(error){if(generation===postureGeneration)stopPosture(`Posture awareness unavailable: ${error.message}. Check local model and runtime assets.`);}
 }
 function frame(video,width=1280){if(video.readyState<2 || !video.videoWidth)throw new Error('The preview is not ready. Try again in a moment.');const canvas=document.createElement('canvas');canvas.width=Math.min(width,video.videoWidth);canvas.height=Math.round(video.videoHeight*canvas.width/video.videoWidth);canvas.getContext('2d').drawImage(video,0,0,canvas.width,canvas.height);return canvas.toDataURL('image/jpeg',.75);}
@@ -494,11 +576,53 @@ $('generateCad').addEventListener('click',async()=>{
 $('swapModel').addEventListener('click',()=>swapModel());$('verifyModels').addEventListener('click',async()=>{try{const result=await api('/models/verify',{name:$('models').value});toast(result.answer || result.message || 'Selected model verified.');await loadModels();}catch(e){toast(e.message);}});
 $('focusStart').addEventListener('click',()=>focusAction('start'));document.querySelectorAll('[data-focus]').forEach(button=>button.addEventListener('click',()=>focusAction(button.dataset.focus)));$('diagnostics').addEventListener('click',diagnostics);
 $('shareScreen').addEventListener('click',startScreen);$('stopScreen').addEventListener('click',stopScreen);$('askScreen').addEventListener('click',()=>see('screen'));$('watch').addEventListener('change',startWatch);$('watchCloud').addEventListener('change',()=>{if($('watchCloud').checked)toast('Cloud nudges enabled for the current share. Fresh screen frames may incur API charges.');});$('startCamera').addEventListener('click',startCamera);$('stopCamera').addEventListener('click',stopCamera);$('askCamera').addEventListener('click',()=>see('camera'));
-$('postureConsent').addEventListener('change',enablePosture);$('calibratePosture').addEventListener('click',()=>{try{const result=postureController?.calibrate();if(!result)throw new Error('Enable posture awareness first.');$('postureStatus').textContent=`Calibrated locally. ${result.torsoVisible?'Head and torso heuristics enabled.':'Head heuristic enabled; hips are not confidently visible, so torso detection stays off.'}`;}catch(error){toast(error.message);}});
-addEventListener('pagehide',()=>{liveVoice?.stop();stopScreen();stopCamera();stopListening();stopSpeech();});
+$('postureConsent').addEventListener('change',enablePosture);$('gestureConsent').addEventListener('change',enablePosture);$('calibratePosture').addEventListener('click',()=>{try{const result=postureController?.calibrate();if(!result)throw new Error('Enable posture awareness first.');$('postureStatus').textContent=`Calibrated locally. ${result.torsoVisible?'Head and torso heuristics enabled.':'Head heuristic enabled; hips are not confidently visible, so torso detection stays off.'}`;}catch(error){toast(error.message);}});
+$('researchOpen').addEventListener('click',()=>researchAction('open',$('researchUrl').value.trim()));
+$('researchSearch').addEventListener('click',()=>researchAction('search',$('researchTopic').value.trim()));
+$('researchRead').addEventListener('click',()=>researchAction('read'));
+$('researchFind').addEventListener('click',()=>researchAction('find',$('researchQuery').value));
+$('researchClose').addEventListener('click',()=>researchAction('close'));
+$('cadAddPart').addEventListener('click',()=>{
+  try{const existing=$('cadAssembly').value.trim()?CADParts():[];
+    if(existing.length>=8)throw new Error('Eight-part assembly limit reached.');
+    existing.push(currentCADPart());$('cadAssembly').value=JSON.stringify(existing,null,2);
+    $('cadAssemblyStatus').textContent=existing.length+' part(s) in editor.';
+  }catch(error){toast(error.message);}
+});
+$('cadPreviewButton').addEventListener('click',async()=>{
+  try{
+    cadPreviewSession?.close();cadPreviewSession=null;
+    const canvas=$('cadPreviewCanvas');canvas.hidden=false;
+    const {drawCADPreview}=await import('/cad_preview.js');
+    cadPreviewSession=await drawCADPreview(canvas,CADParts());
+    $('cadAssemblyStatus').textContent='Local 3D preview active. Drag to rotate, scroll to zoom. Separate meshes, not Boolean solids.';
+  }catch(error){$('cadPreviewCanvas').hidden=true;toast('CAD preview: '+error.message);}
+});
+$('cadCreate').addEventListener('click',async()=>{
+  try{const model=await api('/cad/create',{name:$('cadModelName').value.trim(),parts:CADParts()});
+    cadSelected={id:model.id,revision:model.revision};
+    $('cadAssemblyStatus').textContent='Saved '+model.name+' revision '+model.revision+'.';
+    await loadCADModels();
+  }catch(error){toast(error.message);}
+});
+$('cadRevise').addEventListener('click',async()=>{
+  if(!cadSelected){toast('Select Edit on an existing model first.');return;}
+  try{const model=await api('/cad/revise',{id:cadSelected.id,revision:cadSelected.revision,parts:CADParts()});
+    cadSelected.revision=model.revision;
+    $('cadAssemblyStatus').textContent='Saved revision '+model.revision+'.';
+    await loadCADModels();
+  }catch(error){toast(error.message);}
+});
+$('cadExport').addEventListener('click',async()=>{
+  if(!cadSelected){toast('Select or create a model first.');return;}
+  try{const result=await api('/cad/export',{id:cadSelected.id});downloadCAD(result);
+    $('cadAssemblyStatus').textContent=result.triangles+' triangles in STL · revision '+result.revision+'.';
+  }catch(error){toast(error.message);}
+});
+addEventListener('pagehide',()=>{cadPreviewSession?.close();liveVoice?.stop();stopScreen();stopCamera();stopListening();stopSpeech();});
 setupSpeech();
 
-await Promise.allSettled([refreshGraph(),loadModels(),refreshFocus(),diagnostics(),loadProjects(),loadCapabilities(),loadSkills(),loadActions()]);
+await Promise.allSettled([refreshGraph(),loadModels(),refreshFocus(),diagnostics(),loadProjects(),loadCapabilities(),loadSkills(),loadActions(),loadCADModels()]);
 await refreshWorkflows(false);
 try{const history=await api('/projects/history');restoreConversation(history.messages || []);}catch(e){toast('Project history unavailable: '+e.message);}
 const hour=new Date().getHours();$('greeting').textContent=`Good ${hour<12?'morning':hour<17?'afternoon':'evening'}, sir. ${graph.nodes.length} notes indexed, all present and accounted for. What shall we explore?`;

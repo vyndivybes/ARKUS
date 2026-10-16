@@ -39,7 +39,7 @@ export function classifyPose(landmarks, baseline) {
   };
 }
 
-export async function createLocalPosture({video,onSample,onStatus,onError}) {
+export async function createLocalPosture({video,onSample,onStatus,onError,onLandmarks}) {
   const {FilesetResolver,PoseLandmarker} = await import('/vendor/vision_bundle.mjs');
   const fileset = await FilesetResolver.forVisionTasks('/vendor/wasm');
   const detector = await PoseLandmarker.createFromOptions(fileset,{
@@ -54,6 +54,7 @@ export async function createLocalPosture({video,onSample,onStatus,onError}) {
     try{
       const result=detector.detectForVideo(video,performance.now());
       latest=result.landmarks?.[0] || null;
+      onLandmarks?.(latest);
       const sample=classifyPose(latest,baseline);
       onStatus(baseline?(sample.present?`Local heuristic active · head ${sample.head_down?'lowered':'neutral'} · torso ${baseline.torsoRatio===null?'out of view':sample.slouched?'compressed':'neutral'}`:'Local landmarks not confident: presence unavailable or out of frame.'):'Local inference ready. Sit upright and click Calibrate. Presence only until calibrated.');
       await onSample(sample);

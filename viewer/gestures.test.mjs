@@ -1,0 +1,5 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {classifyGesture,GestureGate} from './gestures.js';
+const joint=(x,y,v=0.99)=>({x,y,visibility:v});
+function pose(leftY,rightY){const points=Array.from({length:33},()=>joint(0.5,0.5,0));points[11]=joint(0.4,.50);points[12]=joint(.60,.50);points[15]=joint(.4,leftY);points[16]=joint(.60,rightY);return points;}
+test('visible raised hands detected, low visibility never qualifies',()=>{assert.equal(classifyGesture(pose(.2,.7)),'left');assert.equal(classifyGesture(pose(.7,.2)),'right');assert.equal(classifyGesture(pose(.2,.2)),'both');assert.equal(classifyGesture(pose(.7,.7)),null);const p=pose(.2,.7);p[15].visibility=0;assert.equal(classifyGesture(p),null);});
+test('hold and cooldown block accidental repeated UI actions',()=>{const g=new GestureGate({holdMs:650,cooldownMs:1800});assert.equal(g.accept('left',1000),null);assert.equal(g.accept('left',1700),'left');assert.equal(g.accept('left',1750),null);assert.equal(g.accept(null,1800),null);assert.equal(g.accept('left',2000),null);assert.equal(g.accept('left',2700),null);assert.equal(g.accept('left',3900),'left');});
