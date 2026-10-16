@@ -572,13 +572,30 @@ class App:
             r'\b(?:search (?:the )?web|look up online|latest (?:news|release|update|version)|'
             r"today['’]?s (?:weather|news)|current (?:weather|news|prices?|release))\b",
             question, re.I)
-        if (current_public and self.provider == 'gemini'
-                and self.config.get('enable_google_search') is True
-                and self.config.get('allow_paid_models') is True):
+        if current_public:
             with self.lock:
-                result = self.web_search(question)
-                self._remember_exchange(question, result['answer'])
-                return result
+                if (self.provider == 'gemini'
+                        and self.config.get('enable_google_search') is True
+                        and self.config.get('allow_paid_models') is True):
+                    result = self.web_search(question)
+                    self._remember_exchange(question, result['answer'])
+                    return result
+                if self.provider == 'offline':
+                    answer = "Live web search is unavailable offline. Connect an approved provider to verify current facts."
+                    self._remember_exchange(question, answer)
+                    return dict(answer=answer, nodes=[], kind='uncovered')
+                if self.model not in self.verified:
+                    self.verify_model(self.model)
+                answer = self.completion([
+                    {'role': 'system', 'content': GENERAL_PERSONA +
+                     "\\nThe user wants CURRENT online facts, but live web search is not enabled. "
+                     "Explicitly disclose that you cannot verify current information, "
+                     "and do not fabricate web searches or citations."},
+                    *list(self.history)[-10:],
+                    {'role': 'user', 'content': question},
+                ])
+                self._remember_exchange(question, answer)
+                return dict(answer=answer, nodes=[], kind='general')
         with self.lock:
             document_hits=self.knowledge.search(self.projects.active,question)
             if document_hits:
