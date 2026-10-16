@@ -24,6 +24,12 @@ Try:
 
 Offline mode extracts matching note text; it is **not an LLM**. Generated conversation and image understanding require a configured model. Source references identify retrieved supporting notes; they do not prove a model's interpretation is correct.
 
+## Conversational model fallback and optional current-information search
+
+When a configured and verified language model is accessible, ARKUS now gives **general conversational answers** to questions not covered by local notes. General answers are labeled `kind=general` and have no fabricated note or web citations; they are model responses, not verified live facts. The entirely free offline mode continues to search local project notes and honestly reports missing evidence.
+
+If a user has explicitly configured the Gemini provider with **both** `enable_google_search=true` and `allow_paid_models=true`, questions such as **"Search the web for..."**, **"Look up online..."**, or **"latest news..."** automatically use Google Search grounding, preserve the answer in project conversation history and display returned HTTPS source references in the ordinary conversation panel. Without both opt-ins, ARKUS does **not** make an automatic Google call. This feature may incur Google charges and is not enabled by default. Live duplex voice has separate local function tools for notes, local reminders and project briefing; it does not silently inherit the search permission.
+
 ## Project workspaces and continuity (v0.2.0)
 
 Inspired by ADA V2's project-memory concept, ARKUS now offers **local isolated project workspaces** without importing ADA's broad file-reading or self-executing tools.
