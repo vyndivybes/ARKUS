@@ -1,4 +1,5 @@
 import {createCameraCapture} from './camera_capture.js';
+import {requestScreenCapture} from './screen_capture.js';
 import {createLiveVoice} from './live_voice.js';
 import {runLiveResearch} from './research_tools.js';
 import {classifyGesture,GestureGate} from './gestures.js';
@@ -327,7 +328,12 @@ async function researchAction(action,value){
     $('researchResult').textContent=result.status==='read'
       ?(result.title+'\n'+result.url+'\n\n'+result.text)
       :JSON.stringify(result,null,2);
-  }catch(error){$('researchResult').textContent=error.message;}
+  }catch(error){
+    const message=error.message==='Open a reference page first.'
+      ?'Open a reference first: choose “Search and read public article” for a Wikipedia topic, or enter a public HTTPS URL and choose “Open page”. Then use “Find on page”.'
+      :error.message;
+    $('researchResult').textContent=message;
+  }
 }
 async function showBriefing(){
   try{const b=await api('/workflow/briefing');addMessage(b.answer,'assistant');speak(b.answer);
@@ -500,7 +506,7 @@ function setupSpeech(){
     if(completed.trim())speechBuffer=`${speechBuffer} ${completed}`.trim();$('question').value=speechBuffer || event.results[event.results.length-1][0].transcript;
     if(speechBuffer)finishTimer=setTimeout(flushSpeech,FINISH_MS);
   };
-  recognizer.onerror=event=>{toast(`Microphone: ${event.error}. Tap the ear to retry.`);stopListening();};
+  recognizer.onerror=event=>{toast(event.error==='network'?'Browser voice recognition is unavailable on this network. Use LIVE for Gemini voice if configured, or type your message.':`Microphone: ${event.error}. Tap the ear to retry.`);stopListening();};
   recognizer.onend=()=>{listening=false;$('mic').classList.remove('active');$('mic').setAttribute('aria-label','Start microphone');status('Microphone off');if(speechBuffer){clearTimeout(finishTimer);finishTimer=setTimeout(flushSpeech,FINISH_MS);}};
   $('mic').addEventListener('click',()=>{if(listening){stopListening();return;}if(liveVoice?.active||liveVoice?.connecting)liveVoice.stop();stopSpeech();try{recognizer.start();listening=true;$('mic').classList.add('active');$('mic').setAttribute('aria-label','Stop microphone');status('Listening');}catch(e){toast(e.message);}});
 }
@@ -508,7 +514,7 @@ function flushSpeech(){const text=speechBuffer;speechBuffer='';$('question').val
 function stopListening(){listening=false;speechBuffer='';clearTimeout(finishTimer);recognizer?.stop();$('mic').classList.remove('active');}
 async function startScreen(){
   if(!navigator.mediaDevices?.getDisplayMedia){toast('Screen sharing requires a supported browser on localhost or HTTPS.');return;}
-  try{const stream=await navigator.mediaDevices.getDisplayMedia({video:{displaySurface:'monitor'},audio:false});stopScreen();screenStream=stream;$('screenPreview').srcObject=stream;$('screenPreview').hidden=false;$('stopScreen').disabled=false;$('askScreen').disabled=false;stream.getVideoTracks()[0].addEventListener('ended',stopScreen);const surface=stream.getVideoTracks()[0].getSettings().displaySurface;toast(surface==='monitor'?'Entire monitor shared locally. Frames send only with your consent.':'Single tab or window shared. Local watch requires the entire monitor.');updatePrivacy();}catch(e){toast(`Screen sharing: ${e.message}`);}
+  try{const stream=await requestScreenCapture(navigator.mediaDevices);stopScreen();screenStream=stream;$('screenPreview').srcObject=stream;$('screenPreview').hidden=false;$('stopScreen').disabled=false;$('askScreen').disabled=false;stream.getVideoTracks()[0].addEventListener('ended',stopScreen);const surface=stream.getVideoTracks()[0].getSettings().displaySurface;toast(surface==='monitor'?'Entire monitor shared locally. Frames send only with your consent.':'Single tab or window shared. Local watch requires the entire monitor.');updatePrivacy();}catch(e){toast(`Screen sharing: ${e.message}`);}
 }
 function stopScreen(){if(watchTimer)api('/watch',{enabled:false}).catch(()=>{});clearInterval(watchTimer);watchTimer=null;screenStream?.getTracks().forEach(t=>t.stop());screenStream=null;previousPixels=null;stillSince=0;$('screenPreview').srcObject=null;$('screenPreview').hidden=true;$('stopScreen').disabled=true;$('askScreen').disabled=true;$('watch').checked=false;$('screenConsent').checked=false;$('watchCloud').checked=false;$('watchStatus').textContent='Screen watch is off. No screen content is sent in chat.';updatePrivacy();}
 const cameraCapture=createCameraCapture({
