@@ -40,6 +40,6 @@ if (-not (Test-Path -LiteralPath (Join-Path $vendor 'pypdf'))) {
 }
 # Isolated runtime: stdlib, bundled and checksum-verified PDF parser, app code.
 @('python313.zip', '.', 'vendor', '../app') | Set-Content -LiteralPath (Join-Path $taskRuntime 'python313._pth') -Encoding Ascii
-& (Join-Path $taskRuntime 'python.exe') -c 'import pypdf; print("Bundled PDF text parser import PASS")'
+& (Join-Path $taskRuntime 'python.exe') -c 'import pypdf'
 if ($LASTEXITCODE -ne 0) { throw 'Bundled PDF text parser unavailable.' }
 Write-Output 'Pinned embedded Python and pypdf verified and prepared.'
