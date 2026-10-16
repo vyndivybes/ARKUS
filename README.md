@@ -127,3 +127,13 @@ Implementation traceability: [16-prompt acceptance map](docs/requirements.md). D
 ## Skill Forge (v0.4.0)
 
 In Settings → Skill Forge, ARKUS supports AI-authored **declarative numeric skills** through its existing optional model provider, with free offline manual JSON authoring. The available operations are add, subtract, multiply, divide, percentage, average and clamp. Each skill is a bounded JSON definition, tested in the built-in safe calculation engine and explicitly activated before use. Every skill is isolated to its project and retained locally across sessions. No third-party Brahma source code is included. **This is not general Python code generation or self-modifying ARKUS:** there is deliberately no arbitrary script execution, automatic GitHub push, external system control or unreviewed dynamic Python module loading. Gemini requires separately configured API access and may incur provider charges. Never commit a Google API key to GitHub.
+
+## Google Gemini AI provider (v0.4.1)
+
+ARKUS has a direct Google Gemini REST adapter for text chat and **Skill Forge draft creation**. Keep credentials on your own computer in the existing user-data `config.json` (not in GitHub and not in chat). Use the following example after choosing a supported model visible through Google's model-list response:
+
+```json
+{"provider":"gemini","model":"gemini-2.5-flash","api_key":"YOUR_PRIVATE_GEMINI_KEY","allow_paid_models":false,"aliases":{}}
+```
+
+**Default fail-closed cost guard:** `allow_paid_models:false` blocks Gemini generation calls because ARKUS cannot establish Google's billing/free-tier state from the API catalog. Changing it to true explicitly permits provider-billed requests; never do this unless you accept that costs may occur. Model availability and quotas depend on your Google account. The API key is sent in Google's `X-goog-api-key` request header, not in the URL. Model lists do not establish live credentials until tested. This adapter does not yet provide streaming duplex audio, webcam/vision through Gemini, code-execution sandbox or autonomous self-upgrade.
