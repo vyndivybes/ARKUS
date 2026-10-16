@@ -123,7 +123,7 @@ class ProjectStore:
             return self.state()
 
     # Project files are draft data only; ARKUS never imports, launches or evaluates them.
-    DRAFT_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,75}\\.(?:md|txt|json|py|js|csv)")
+    DRAFT_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,75}\.(?:md|txt|json|py|js|csv)")
     MAX_DRAFT_BYTES = 100_000
     MAX_DRAFT_FILES = 80
 
