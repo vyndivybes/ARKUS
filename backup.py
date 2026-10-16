@@ -32,6 +32,10 @@ def _supported(name):
         if len(pieces) == 3 and pieces[1] != "captures":
             return False
         return pieces[-1].lower().endswith((".md", ".txt"))
+    if (len(pieces) == 4 and pieces[0] == "projects" and NAME.fullmatch(pieces[1])
+            and pieces[2] == "drafts"
+            and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,75}\\.(?:md|txt|json|py|js|csv)", pieces[3])):
+        return True
     if len(pieces) == 3 and pieces[0] == "projects" and NAME.fullmatch(pieces[1]):
         return pieces[2] in ("history.json", "companion.json")
     if (len(pieces) in (4, 5) and pieces[0] == "projects"
