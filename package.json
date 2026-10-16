@@ -49,6 +49,7 @@
       "skill_forge.py",
       "gemini_adapter.py",
       "live_tokens.py",
+      "smart_home.py",
       "action_executor.py",
       "cad_shapes.py",
       "parametric_cad.py",
