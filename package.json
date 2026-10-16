@@ -1,6 +1,6 @@
 {
   "name": "arkus",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "private": true,
   "description": "Local-first Windows knowledge galaxy and focus companion",
   "main": "desktop/main.cjs",
