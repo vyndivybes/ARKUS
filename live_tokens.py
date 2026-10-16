@@ -19,6 +19,8 @@ class LiveTokenIssuer:
     def __init__(self,key):
         if not isinstance(key,str) or not (8<=len(key)<=1000) or key.startswith("PUT-"):
             raise LiveTokenError("A private Google Gemini API key is required.")
+        if key.strip().lower().endswith(".apps.googleusercontent.com"):
+            raise LiveTokenError("Google OAuth client ID is not a Gemini API key. Create a Gemini key in Google AI Studio.")
         self.key=key
 
     def create(self,model):
@@ -47,7 +49,32 @@ class LiveTokenIssuer:
                     raise LiveTokenError("Gemini token response exceeds size limit.")
                 data=json.loads(raw)
         except urllib.error.HTTPError as exc:
-            raise LiveTokenError(f"Gemini token provisioning failed (HTTP {exc.code}). Check account and quota.") from None
+            # Google error bodies can contain sensitive user data or credentials.
+            # Show only an allowlisted machine-readable status, never raw text.
+            reason = ""
+            if exc.code == 400:
+                try:
+                    raw = exc.read(4097)
+                    if len(raw) <= 4096:
+                        body = json.loads(raw)
+                        value = body.get("error", {}).get("status", "") if isinstance(body, dict) else ""
+                        if value in ("INVALID_ARGUMENT", "FAILED_PRECONDITION",
+                                     "PERMISSION_DENIED", "UNAUTHENTICATED", "RESOURCE_EXHAUSTED"):
+                            reason = ": " + value
+                except (ValueError, OSError, AttributeError, TypeError):
+                    pass
+            if exc.code == 400:
+                raise LiveTokenError(
+                    f"Gemini Live token rejected (HTTP 400{reason}). Check the Gemini API key and "
+                    f"live_model; Google recommends gemini-3.8-live. This error occurs before "
+                    f"microphone recording starts.") from None
+            if exc.code == 401 or exc.code == 403:
+                raise LiveTokenError(
+                    f"Gemini Live authentication refused (HTTP {exc.code}). Check Gemini API key "
+                    f"type, restrictions and project access in Google AI Studio.") from None
+            if exc.code == 429:
+                raise LiveTokenError("Gemini Live token quota exceeded (HTTP 429). Check Gemini API quota.") from None
+            raise LiveTokenError(f"Gemini Live token provisioning failed (HTTP {exc.code}).") from None
         except (urllib.error.URLError,TimeoutError,OSError,ValueError) as exc:
             if isinstance(exc,LiveTokenError): raise
             raise LiveTokenError("Gemini Live token provisioning unavailable.") from None

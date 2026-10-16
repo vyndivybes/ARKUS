@@ -216,7 +216,7 @@ class App:
                 raise UserError('Gemini Live is not enabled in your private local configuration.',409)
             if self.config.get('allow_paid_models') is not True:
                 raise UserError('Gemini Live pricing is not guaranteed free. Explicit cost permission is required.',409)
-            model=self.config.get('live_model','gemini-3.1-flash-live-preview')
+            model=self.config.get('live_model','gemini-3.8-live')
             if time.monotonic()-self._last_live_token_at<4:
                 raise UserError('A Live token was just requested. Avoid repeated sessions.',429)
             self._last_live_token_at=time.monotonic()
