@@ -1,6 +1,7 @@
 import {createCameraCapture} from './camera_capture.js';
 import {requestScreenCapture} from './screen_capture.js';
 import {createLiveVoice} from './live_voice.js';
+import {matchDeviceCommand} from './device_voice.js';
 import {createResearchQueue} from './research_queue.js';
 import {classifyGesture,GestureGate} from './gestures.js';
 import {createHandUI} from './hand_ui.js';
@@ -558,7 +559,31 @@ async function loadCapabilities(){
     }
   }catch(e){$('capabilityList').textContent=e.message;}
 }
+async function handleSpokenDevice(text) {
+  // No device action from an unprefixed, ambiguous or model-generated utterance.
+  if(!/^(?:hey|okay|ok)\s+arkus[, ]+/i.test(text) || !/\b(?:turn|switch)\s+(?:on|off)\b/i.test(text))return false;
+  const {devices}=await api('/smart-home/devices');
+  const intent=matchDeviceCommand(text,devices);
+  if(!intent)return false;
+  const proposal=await api('/smart-home/propose',{project:document.body.dataset.project,
+    device_id:intent.device_id,state:intent.state});
+  const confirmation=window.prompt(
+    'Voice recognized: '+text+'\nDevice: '+intent.alias+
+    '\nVerify the device. Type this exact approval phrase (90-second limit):\n'+proposal.confirmation,'');
+  if(confirmation!==proposal.confirmation){
+    $('smartStatus').textContent='Voice request canceled. No device command was sent.';
+    addMessage('Voice device request canceled; the device was not switched.');return true;
+  }
+  const outcome=await api('/smart-home/execute',{project:document.body.dataset.project,
+    action_id:proposal.id,confirmation});
+  const answer='Confirmed '+outcome.device+(outcome.is_on?' is ON.':' is OFF.');
+  $('smartStatus').textContent=answer;
+  addMessage(answer);speak(answer);
+  return true;
+}
+
 async function command(text){
+  if(await handleSpokenDevice(text))return true;
   if(/^(?:my |the )?(?:daily |morning )?briefing[.!]?$/i.test(text) ||
      /^(?:give me |show me |what is )(?:my |the )?(?:daily |morning )?briefing[.!]?$/i.test(text)){
     await showBriefing();return true;
@@ -861,7 +886,12 @@ liveVoice=createLiveVoice({
     $('liveMic').classList.toggle('active',running);
     $('liveMic').setAttribute('aria-label',running?'Stop Gemini Live conversation':'Start Gemini Live conversation');
   },
-  onTranscript:(text,role)=>addMessage(text,role),
+  onTranscript:(text,role)=>{
+    addMessage(text,role);
+    if(role==='user' && /^(?:hey|okay|ok)\s+arkus[, ]+/i.test(text) && /\b(?:turn|switch)\s+(?:on|off)\b/i.test(text)){
+      handleSpokenDevice(text).catch(error=>{toast('Voice device request declined: '+error.message);});
+    }
+  },
   onError:message=>toast(message)
 });
 $('liveMic').addEventListener('click',async()=>{
