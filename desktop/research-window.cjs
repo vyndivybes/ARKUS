@@ -15,6 +15,11 @@ function createResearchWindow(owner){
  });
  async function perform(action,value){
   if(action==='close'){if(window&&!window.isDestroyed())window.close();window=null;return {status:'closed'};}
+  if(action==='search'){
+   const query=normalizeQuery(value);
+   await perform('open','https://en.wikipedia.org/w/index.php?search='+encodeURIComponent(query));
+   return perform('read');
+  }
   if(action==='open'){
    const url=safeUrl(value);
    if(!window||window.isDestroyed()){
