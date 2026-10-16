@@ -118,7 +118,7 @@ class REAReviewTests(unittest.TestCase):
             (target / "assets").mkdir(parents=True)
             (target / "assets" / "index.js").write_text("console.log('ok')", encoding="utf-8")
             process, launch = process_factory('{"evidence_id":"ev_test"}')
-            with patch("rea_review.shutil.which", return_value="npx.cmd"), \\
+            with patch("rea_review.shutil.which", return_value="npx.cmd"), \
                  patch("rea_review.subprocess.Popen", side_effect=launch) as execute:
                 run_review(
                     target, approved=True, source_paths=["assets/index.js"],
@@ -150,7 +150,7 @@ class REAReviewTests(unittest.TestCase):
             root = Path(tmp)
             for output, kind in (("", "empty"), ("x" * (8 * 1024 * 1024 + 1), "exceeded")):
                 process, launch = process_factory(output)
-                with patch("rea_review.shutil.which", return_value="npx.cmd"), \\
+                with patch("rea_review.shutil.which", return_value="npx.cmd"), \
                      patch("rea_review.subprocess.Popen", side_effect=launch):
                     with self.assertRaisesRegex(ReviewError, kind):
                         run_review(root, approved=True, storage_root=root / "out")
