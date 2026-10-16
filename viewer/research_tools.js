@@ -3,7 +3,8 @@
 export const RESEARCH_VOICE_TOOLS=Object.freeze(['research_search','research_read','research_links','research_follow']);
 export async function runLiveResearch(name,args,{enabled,invoke,confirmSearch}={}){
  if(!RESEARCH_VOICE_TOOLS.includes(name))throw new Error('Research tool not permitted.');
- if(enabled!==true)throw new Error('Enable public research consent in System controls before sharing browsing evidence with Gemini.');
+ const isConsented=()=>typeof enabled==='function'?enabled()===true:enabled===true;
+ if(!isConsented())throw new Error('Enable public research consent in System controls before sharing browsing evidence with Gemini.');
  if(typeof invoke!=='function')throw new Error('The isolated Windows ARKUS research browser is unavailable.');
  if(!args||typeof args!=='object'||Array.isArray(args))throw new Error('Invalid research arguments.');
  const keys=Object.keys(args);
@@ -22,7 +23,9 @@ export async function runLiveResearch(name,args,{enabled,invoke,confirmSearch}={
   if(keys.length)throw new Error('This research tool takes no arguments.');
   action=name==='research_read'?'read':'links';
  }
+ if(!isConsented())throw new Error('Public research consent was revoked.');
  const result=await invoke(action,value);
+ if(!isConsented())throw new Error('Public research consent was revoked.');
  if(!result||typeof result!=='object'||!['read','links','followed'].includes(result.status))
   throw new Error('Research did not produce a verified response.');
  if(typeof result.url!=='string'||!result.url.startsWith('https://'))
