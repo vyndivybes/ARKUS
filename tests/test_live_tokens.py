@@ -51,6 +51,32 @@ class LiveTokenTests(unittest.TestCase):
             self.assertEqual(result["token"],"auth_tokens/ephemeral_sample")
             self.assertNotIn("PRIVATE_TEST_KEY_123",json.dumps(result))
             self.assertNotIn("PRIVATE_TEST_KEY_123",req.full_url)
+    def test_live_token_carries_only_bounded_active_project_conversation(self):
+        app = self.app()
+        for i in range(7):
+            app.record_live_exchange(f"Question {i} " + "x" * 320,
+                                     f"Answer {i} " + "y" * 320)
+        with patch("server.LiveTokenIssuer") as issuer:
+            issuer.return_value.create.return_value = {
+                "token": "auth_tokens/session_example", "model": "gemini-3.1-flash-live-preview"
+            }
+            token = app.live_token(project="general")
+            history = token["recent_history"]
+            self.assertEqual(token["project"], "general")
+            self.assertEqual(len(history), 8)
+            self.assertEqual(history[0]["role"], "user")
+            self.assertTrue(history[0]["content"].startswith("Question 3"))
+            self.assertTrue(all(len(item["content"]) <= 300 for item in history))
+            self.assertNotIn("Question 0", str(history))
+            app.create_project("Isolated Voice")
+            app._last_live_token_at = 0
+            other = app.live_token(project="isolated-voice")
+            self.assertEqual(other["recent_history"], [])
+            app._last_live_token_at = 0
+            with self.assertRaises(UserError) as error:
+                app.live_token(project="general")
+            self.assertEqual(error.exception.status, 409)
+
     def test_live_token_http_requires_local_csrf_token(self):
         import threading
         import urllib.request

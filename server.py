@@ -226,7 +226,18 @@ class App:
                     result=issuer.create(model,allow_unconstrained_fallback=True)
                 else:
                     result=issuer.create(model)
-                return {**result, "project":self.projects.active}
+                # The user has explicitly started Live voice. Resume only a short,
+                # active-project window; do not expose other workspaces or full notes.
+                try:
+                    history = self.projects.read_history()
+                except ProjectError:
+                    history = []  # Broken history should not prevent a new call.
+                recent = [
+                    {"role": item["role"], "content": item["content"][:300]}
+                    for item in history[-8:]
+                ]
+                return {**result, "project":self.projects.active,
+                        "recent_history":recent}
             except LiveTokenError as exc:
                 raise UserError(str(exc),502) from None
 
