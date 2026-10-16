@@ -95,6 +95,9 @@ class AppBackupTests(unittest.TestCase):
                 with zipfile.ZipFile(archive) as z:
                     self.assertTrue(any(n.endswith(".md") for n in z.namelist()))
                 self.assertTrue(any("notes/captures/" in n for n in z.namelist()))
+                self.assertFalse(any("config" in n for n in z.namelist()))
+                due=app.due_all_projects()
+                self.assertEqual(due["due"], [])
 
 
 if __name__=="__main__":
