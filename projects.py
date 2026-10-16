@@ -173,6 +173,29 @@ class ProjectStore:
             except UnicodeDecodeError:
                 raise ProjectError("Project draft is not valid UTF-8.") from None
 
+    def validate_draft(self,filename):
+        """Parse saved Python or JSON without importing or executing any draft code."""
+        import hashlib
+        document=self.read_draft(filename)
+        content=document["content"]
+        result={"name":filename,"sha256":hashlib.sha256(content.encode("utf-8")).hexdigest(),
+                "execution":"not_executed"}
+        def reject_constant(_value):
+            raise json.JSONDecodeError("Nonfinite JSON number",content,0)
+        try:
+            if filename.endswith(".py"):
+                compile(content,filename,'exec',dont_inherit=True)
+            elif filename.endswith(".json"):
+                json.loads(content,parse_constant=reject_constant)
+            else:
+                raise ProjectError("Syntax validation supports saved .py and .json drafts only.")
+        except (SyntaxError,json.JSONDecodeError) as exc:
+            return {**result,"valid":False,"line":exc.lineno,"column":getattr(exc,"offset",None) or getattr(exc,"colno",None),
+                    "message":str(getattr(exc,"msg","Invalid syntax"))[:160]}
+        except (RecursionError,MemoryError):
+            raise ProjectError("Draft is too complex to validate safely.") from None
+        return {**result,"valid":True,"message":"Syntax is valid. Draft was not executed or tested for behavior."}
+
     def write_draft(self, filename, content, approved=False, replace=False):
         if approved is not True or type(replace) is not bool:
             raise ProjectError("Writing or replacing project files requires explicit user approval.")

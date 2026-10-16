@@ -23,6 +23,8 @@ MAX_SKILLS=40
 def check_spec(spec):
     if not isinstance(spec,dict):
         raise SkillError("Skill must be a JSON object.")
+    if set(spec)-{"name","description","operation","inputs","output","tests"}:
+        raise SkillError("Skill contains unsupported fields. Executable code is not accepted.")
     name=spec.get("name")
     desc=spec.get("description")
     op=spec.get("operation")
@@ -40,7 +42,18 @@ def check_spec(spec):
     output=spec.get("output","Result")
     if not isinstance(output,str) or len(output)>100:
         raise SkillError("Output label too long.")
-    return {"name":name,"description":desc.strip(),"operation":op,"inputs":inputs,"output":output}
+    cases=spec.get("tests",[])
+    if not isinstance(cases,list) or len(cases)>20:
+        raise SkillError("Supply at most 20 independent expected-result examples.")
+    for case in cases:
+        if not isinstance(case,dict) or set(case)!={"parameters","expected"}:
+            raise SkillError("Each example needs parameters and an expected result.")
+        params=case["parameters"];expected=case["expected"]
+        if (not isinstance(params,dict) or set(params)!=set(inputs)
+                or any(type(v) not in (int,float) or abs(v)>1e12 or not math.isfinite(v) for v in params.values())
+                or type(expected) not in (int,float) or abs(expected)>1e24 or not math.isfinite(expected)):
+            raise SkillError("Examples must use the declared inputs and finite numeric results.")
+    return {"name":name,"description":desc.strip(),"operation":op,"inputs":inputs,"output":output,"tests":cases}
 
 
 def evaluate(spec,params):
@@ -112,14 +125,18 @@ class SkillForge:
         path.parent.mkdir(parents=True,exist_ok=True)
         scratch=path.with_name(path.name+"."+secrets.token_hex(5)+".tmp")
         try:
-            scratch.write_text(json.dumps(items,indent=2),encoding="utf-8")
+            encoded=json.dumps(items,indent=2)
+            if len(encoded.encode("utf-8"))>150000:
+                raise SkillError("Skill registry size limit reached; unchanged.")
+            scratch.write_text(encoded,encoding="utf-8")
             os.replace(scratch,path)
         finally:
             scratch.unlink(missing_ok=True)
 
     def available(self,project):
         with self.lock:
-            return [{"id":item["id"],"status":item["status"],**item["spec"]} for item in self._load(project)]
+            return [{"id":item["id"],"status":item["status"],"revision":item.get("revision",1),
+                     "supersedes":item.get("supersedes"),**check_spec(item["spec"])} for item in self._load(project)]
 
     def propose(self,spec,project):
         spec=check_spec(spec)
@@ -138,31 +155,73 @@ class SkillForge:
         if item is None: raise SkillError("Skill not found in this project.")
         return item
 
-    def test(self,project,skill_id):
+    def revise(self,project,skill_id,spec):
+        spec=check_spec(spec)
+        if not spec["tests"]:
+            raise SkillError("An upgrade requires independent expected-result examples.")
         with self.lock:
             items=self._load(project)
-            item=self._get(items,skill_id)
-            spec=item["spec"]
-            samples=[{name:float(index+2) for index,name in enumerate(spec["inputs"])},
-                     {name:0.0 for name in spec["inputs"]}]
-            for sample in samples:
-                try: evaluate(spec,sample)
-                except SkillError as exc:
-                    if "Division by zero" not in str(exc) and "Clamp minimum" not in str(exc):
-                        raise
-            item["status"]="tested"
+            base=self._get(items,skill_id)
+            if base["status"]!="active":
+                raise SkillError("Draft upgrades from the currently active revision.")
+            if spec["name"]!=base["spec"]["name"] or spec["inputs"]!=base["spec"]["inputs"]:
+                raise SkillError("Upgrades must retain the skill name and input interface.")
+            if len(items)>=MAX_SKILLS:
+                raise SkillError("Skill and revision limit reached.")
+            item={"id":secrets.token_hex(8),"status":"draft","spec":spec,
+                  "revision":base.get("revision",1)+1,"supersedes":base["id"]}
+            items.append(item);self._save(project,items)
+            return {"id":item["id"],"status":"draft","revision":item["revision"],**spec}
+
+    @staticmethod
+    def _check_tests(spec):
+        spec=check_spec(spec)
+        samples=[{name:float(index+2) for index,name in enumerate(spec["inputs"])},
+                 {name:0.0 for name in spec["inputs"]}]
+        for sample in samples:
+            try:evaluate(spec,sample)
+            except SkillError as exc:
+                if "Division by zero" not in str(exc) and "Clamp minimum" not in str(exc):raise
+        for index,case in enumerate(spec["tests"],1):
+            actual=evaluate(spec,case["parameters"])
+            if not math.isclose(actual,case["expected"],rel_tol=1e-9,abs_tol=1e-9):
+                raise SkillError(f"Acceptance example {index} failed: expected {case['expected']}, got {actual}.")
+        return len(spec["tests"])
+
+    def test(self,project,skill_id):
+        with self.lock:
+            items=self._load(project);item=self._get(items,skill_id)
+            count=self._check_tests(item["spec"])
+            if item["status"]!="active":item["status"]="tested"
             self._save(project,items)
-            return {"id":skill_id,"status":"tested","tests":"built-in safe-input and zero-boundary checks"}
+            return {"id":skill_id,"status":item["status"],
+                    "tests":f"Built-in boundary checks and {count} expected-result examples passed."}
 
     def activate(self,project,skill_id):
         with self.lock:
-            items=self._load(project)
-            item=self._get(items,skill_id)
+            items=self._load(project);item=self._get(items,skill_id)
             if item["status"] not in ("tested","active"):
                 raise SkillError("Skill must pass tests before activation.")
-            item["status"]="active"
-            self._save(project,items)
+            current=next((i for i in items if i["spec"]["name"]==item["spec"]["name"] and i["status"]=="active"),None)
+            if current and current["id"]!=skill_id and item.get("supersedes")!=current["id"]:
+                raise SkillError("The active revision changed. Create a new upgrade or use rollback.")
+            if item.get("supersedes") and current is None:
+                raise SkillError("The original active skill is unavailable.")
+            self._check_tests(item["spec"])
+            if current and current["id"]!=skill_id:current["status"]="tested"
+            item["status"]="active";self._save(project,items)
             return {"id":skill_id,"status":"active","name":item["spec"]["name"]}
+
+    def rollback(self,project,skill_id):
+        with self.lock:
+            items=self._load(project);item=self._get(items,skill_id)
+            if item["status"]!="active" or not item.get("supersedes"):
+                raise SkillError("Only an active upgrade can roll back to its preceding revision.")
+            previous=self._get(items,item["supersedes"])
+            self._check_tests(previous["spec"])
+            item["status"]="tested";previous["status"]="active"
+            self._save(project,items)
+            return {"id":previous["id"],"status":"active","name":previous["spec"]["name"]}
 
     def run(self,project,name,params):
         with self.lock:
