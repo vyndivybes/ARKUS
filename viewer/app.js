@@ -12,7 +12,7 @@ const REDUCED_MOTION = matchMedia('(prefers-reduced-motion: reduce)').matches;
 let token, graph = {nodes: [], links: []}, sceneView, busy = false, interacted = false;
 let screenStream, cameraStream, watchTimer, previousPixels, stillSince = 0, lastNudge = 0, lastDiff = null;
 let postureController, postureGeneration=0, postureStarting=false;
-let gestureGate=new GestureGate(),gestureIndex=0,cadSelected=null;
+let gestureGate=new GestureGate(),gestureIndex=0,cadSelected=null,cadPreviewSession=null;
 let postureWrites=Promise.resolve();
 let focusState = {}, eventSequence = 0, reliefUntil = 0, recognizer, listening = false, speechBuffer = '', finishTimer, toastTimer, liveVoice;
 const colors = ['#75e9cc','#e7b16d','#7b9eea','#b690dc','#81c5e3','#d388ab','#b1c788'];
@@ -96,6 +96,7 @@ async function loadProjects(projects){
   return projects;
 }
 async function activateProject(path,payload){
+  cadPreviewSession?.close();cadPreviewSession=null;$('cadPreviewCanvas').hidden=true;cadSelected=null;
   liveVoice?.stop();
   const result=await api(path,payload);
   $('source').hidden=true;
@@ -588,6 +589,15 @@ $('cadAddPart').addEventListener('click',()=>{
     $('cadAssemblyStatus').textContent=existing.length+' part(s) in editor.';
   }catch(error){toast(error.message);}
 });
+$('cadPreviewButton').addEventListener('click',async()=>{
+  try{
+    cadPreviewSession?.close();cadPreviewSession=null;
+    const canvas=$('cadPreviewCanvas');canvas.hidden=false;
+    const {drawCADPreview}=await import('/cad_preview.js');
+    cadPreviewSession=await drawCADPreview(canvas,CADParts());
+    $('cadAssemblyStatus').textContent='Local 3D preview active. Drag to rotate, scroll to zoom. Separate meshes, not Boolean solids.';
+  }catch(error){$('cadPreviewCanvas').hidden=true;toast('CAD preview: '+error.message);}
+});
 $('cadCreate').addEventListener('click',async()=>{
   try{const model=await api('/cad/create',{name:$('cadModelName').value.trim(),parts:CADParts()});
     cadSelected={id:model.id,revision:model.revision};
@@ -609,7 +619,7 @@ $('cadExport').addEventListener('click',async()=>{
     $('cadAssemblyStatus').textContent=result.triangles+' triangles in STL · revision '+result.revision+'.';
   }catch(error){toast(error.message);}
 });
-addEventListener('pagehide',()=>{liveVoice?.stop();stopScreen();stopCamera();stopListening();stopSpeech();});
+addEventListener('pagehide',()=>{cadPreviewSession?.close();liveVoice?.stop();stopScreen();stopCamera();stopListening();stopSpeech();});
 setupSpeech();
 
 await Promise.allSettled([refreshGraph(),loadModels(),refreshFocus(),diagnostics(),loadProjects(),loadCapabilities(),loadSkills(),loadActions(),loadCADModels()]);
