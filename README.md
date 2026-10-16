@@ -87,6 +87,12 @@ Open System controls to discover models and verify access with a minimal real ca
 
 Paid or unknown-price models are blocked unless you explicitly set `allow_paid_models: true`. OpenRouter's catalogue supplies per-token prices when available; zero-price endpoints still have quotas and provider terms. OpenAI pricing is treated as unknown here and requires the same explicit permission. Availability can change; the PDF's Astra/Fable IDs, prices, dates and performance claims are **not assumed valid**. No key or paid model is enabled by default.
 
+## Gemini Live conversation continuity
+
+When you explicitly start Gemini Live, ARKUS now includes **at most eight recent user/assistant messages from the active project**, with each message truncated to 300 characters, in the provider's session setup. This restores some prior context after a stop/restart. It does **not** send history from other projects or automatically open the microphone, and it does **not** add project notes to the prompt unless a normal approved tool call retrieves them. These short transcripts are sent to Google along with the consented Live session; they are not available to the provider in offline mode. Clearing a project's conversation removes that project's stored transcript context.
+
+History is marked as **untrusted prior dialogue, not instructions or verified facts**. Live tool permissions, cost opt-in and separate approval for file drafts remain unchanged. Cumulative speech transcription updates are merged before saving the final user/assistant exchange so repeated partial phrases do not pollute project memory. This improves the application logic but requires an actual Windows microphone, provider/model-access and latency acceptance test; GitHub unit tests alone do not establish real-time voice reliability.
+
 ## Voice and vision
 
 Voice output starts only after interaction. `?mute=1` silences every spoken path. Recognition availability depends on Chrome/Edge or the Electron runtime and may use the browser vendor's speech service. Click the ear yourself; no organ enables the microphone. Completed phrases buffer for `FINISH_MS = 900`; `stop` and `wait` interrupt immediately. Speech and microphone require a real device check before relying on them.
