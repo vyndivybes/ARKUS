@@ -16,7 +16,7 @@ test('no wake phrase or arbitrary model instructions cannot become device action
     'Hey ARKUS, switch off kitchen sockets','Hey ARKUS, what time is it?']){
     assert.equal(matchDeviceCommand(phrase,devices),null);
   }
-  assert.equal(matchDeviceCommand('Hey ARKUS, turn on Study Light',[]),null);
+  assert.throws(()=>matchDeviceCommand('Hey ARKUS, turn on Study Light',[]),/uniquely/);
 });
 test('unpaired, ambiguous or malformed names fail closed',()=>{
   assert.throws(()=>matchDeviceCommand('Hey ARKUS turn on Study Light',[devices[0],{id:'three',alias:'study light'}]),/uniquely/);
