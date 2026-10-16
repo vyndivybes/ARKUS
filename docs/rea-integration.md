@@ -35,6 +35,18 @@ Invoke-WebRequest -Uri "https://raw.githubusercontent.com/vyndivybes/ARKUS/main/
 python "$HOME\\rea_review.py" --target "$HOME\\ada_v2\\dist" --approve
 ```
 
+When the built ADA V2 bundle is large, select exact artifact-relative source paths and retain only a compact summary. The MediaPipe `hand_landmarker.task` model is not a JavaScript module:
+
+```powershell
+# Quick HTML inventory check (small source selection)
+python "$HOME\\rea_review.py" --target "$HOME\\ada_v2\\dist" --source-path index.html --summary --approve
+
+# Analyze the bundled JavaScript separately; this may still need substantial CPU/RAM
+python "$HOME\\rea_review.py" --target "$HOME\\ada_v2\\dist" --source-path assets/index-BEyMx5mJ.js --summary --approve
+```
+
+The `--source-path` value must match an existing file relative to `dist` exactly. `--summary` includes selection metadata alongside the default identity/statistics filter. If REA reports empty output or output above 8 MiB, the launcher provides the actual stdout size without disclosing untrusted output text. Do not increase limits blindly. Prefer direct review of ADA V2's available source code for feature parity, rather than reverse engineering the compiled bundle.
+
 REA's upstream CLI can also generate **full** application Evidence for expert analysis, but it may be hundreds of megabytes and should be retained on local disk, not pasted into an agent conversation. The manual ARKUS launcher intentionally captures only a small first-pass statistics summary to avoid excessive local memory/disk use. For feature-level inspection, use the authorized Codex/REA MCP analysis views; never imply that statistics alone establish feature parity.
 
 ## Evidence boundary

@@ -111,6 +111,51 @@ class REAReviewTests(unittest.TestCase):
                 with self.assertRaisesRegex(ReviewError, "exceeded 8 MiB"):
                     run_review(root, approved=True, storage_root=root / "out")
 
+    def test_selection_and_summary_build_bounded_cli_arguments(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            target = root / "dist"
+            (target / "assets").mkdir(parents=True)
+            (target / "assets" / "index.js").write_text("console.log('ok')", encoding="utf-8")
+            process, launch = process_factory('{"evidence_id":"ev_test"}')
+            with patch("rea_review.shutil.which", return_value="npx.cmd"), \
+                 patch("rea_review.subprocess.Popen", side_effect=launch) as execute:
+                run_review(
+                    target, approved=True, source_paths=["assets/index.js"],
+                    summary=True, storage_root=root / "out",
+                )
+            command = execute.call_args.args[0]
+            self.assertIn("--source-path", command)
+            self.assertEqual(command[command.index("--source-path") + 1], "assets/index.js")
+            self.assertIn("--filter-output", command)
+            self.assertEqual(
+                command[command.index("--filter-output") + 1],
+                "evidence_id,normalized_result.statistics,normalized_result.source_selection",
+            )
+
+    def test_refuses_paths_outside_target_before_launch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            target = root / "dist"
+            target.mkdir()
+            with patch("rea_review.subprocess.Popen") as execute:
+                for path in ("../outside.js", "/etc/passwd", "C:/Windows/system.ini", "", "missing.js"):
+                    with self.subTest(path=path):
+                        with self.assertRaises(ReviewError):
+                            run_review(target, approved=True, source_paths=[path], storage_root=root / "out")
+                execute.assert_not_called()
+
+    def test_error_distinguishes_empty_from_oversized_stdout(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for output, kind in (("", "zero bytes"), ("x" * (8 * 1024 * 1024 + 1), "exceeded")):
+                process, launch = process_factory(output)
+                with patch("rea_review.shutil.which", return_value="npx.cmd"), \
+                     patch("rea_review.subprocess.Popen", side_effect=launch):
+                    with self.assertRaisesRegex(ReviewError, kind):
+                        run_review(root, approved=True, storage_root=root / "out")
+            self.assertFalse((root / "out").exists())
+
     def test_ctrl_c_also_terminates_process_tree(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
