@@ -326,6 +326,11 @@ async function researchAction(action,value){
     $('researchResult').textContent=result.status==='read'
       ?(result.title+'\n'+result.url+'\n\n'+result.text)
       :JSON.stringify(result,null,2);
+    $('researchLinks').replaceChildren();
+    for(const link of result.links||[]){
+      const button=document.createElement('button');button.className='secondary';button.textContent=link.text;button.title=link.url;
+      button.addEventListener('click',()=>researchAction('open',link.url));$('researchLinks').append(button);
+    }
   }catch(error){$('researchResult').textContent=error.message;}
 }
 async function showBriefing(){
@@ -807,6 +812,12 @@ $('cadExport').addEventListener('click',async()=>{
   try{const result=await api('/cad/export',{id:cadSelected.id});downloadCAD(result);
     $('cadAssemblyStatus').textContent=result.triangles+' triangles in STL · revision '+result.revision+'.';
   }catch(error){toast(error.message);}
+});
+$('draftExternalEditor').addEventListener('click',async()=>{
+  const open=window.arkusDesktop?.openProjectDraft;
+  if(typeof open!=='function'){toast('Opening a saved draft in Notepad requires the Windows desktop app.');return;}
+  try{await open(document.body.dataset.project,$('draftFilename').value.trim());toast('Windows Notepad started for the saved draft. Reload the draft after editing.');}
+  catch(error){toast(error.message);}
 });
 $('draftValidate').addEventListener('click',async()=>{
   try{

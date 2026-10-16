@@ -7,6 +7,11 @@ contextBridge.exposeInMainWorld('arkusDesktop', Object.freeze({
     if(value!==undefined && (typeof value!=='string'||value.length>1400))return Promise.reject(new Error('Invalid research input'));
     return ipcRenderer.invoke('research-action',action,value);
   },
+  openProjectDraft: (project,name) => {
+    if(typeof project!=='string'||typeof name!=='string'||project.length>60||name.length>80)
+      return Promise.reject(new Error('Invalid project draft.'));
+    return ipcRenderer.invoke('open-project-draft',project,name);
+  },
   focusAction: action => {
     if (!['pause', 'resume', 'abort', 'retarget'].includes(action)) return Promise.reject(new Error('Unsupported action'));
     return ipcRenderer.invoke('focus-action', action);

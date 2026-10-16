@@ -1,12 +1,13 @@
 'use strict';
 const {BrowserWindow,session}=require('electron');
-const {safeUrl,shortText,normalizeQuery}=require('./research-utils.cjs');
+const {safeUrl,shortText,normalizeQuery,safeLinks}=require('./research-utils.cjs');
 function createResearchWindow(owner){
  let window=null;
  const partition='arkus-public-research';
  const researchSession=session.fromPartition(partition,{cache:false});
  researchSession.setPermissionRequestHandler((_wc,_permission,callback)=>callback(false));
  researchSession.setPermissionCheckHandler(()=>false);
+ researchSession.on('will-download',event=>event.preventDefault());
  // Block unapproved cross-host requests and scheme navigations, including redirects.
  researchSession.webRequest.onBeforeRequest((details,callback)=>{
    if(!['GET','HEAD'].includes(details.method)||!details.url.startsWith('https://'))return callback({cancel:true});
@@ -23,7 +24,7 @@ function createResearchWindow(owner){
   if(action==='open'){
    const url=safeUrl(value);
    if(!window||window.isDestroyed()){
-     window=new BrowserWindow({parent:owner,width:1050,height:780,title:'ARKUS · Public Research',webPreferences:{
+     window=new BrowserWindow({parent:owner,show:process.env.ARKUS_TEST_HIDE!=='1',width:1050,height:780,title:'ARKUS · Public Research',webPreferences:{
        partition,sandbox:true,contextIsolation:true,nodeIntegration:false,webSecurity:true,
        javascript:true
      }});
@@ -36,9 +37,9 @@ function createResearchWindow(owner){
   if(!window||window.isDestroyed())throw Error('Open a reference page first.');
   if(action==='read'){
    const result=await window.webContents.executeJavaScript(
-    '({title:document.title,text:(document.body?.innerText||"").slice(0,6000)})',true);
+    '({title:document.title,text:(document.body?.innerText||"").slice(0,6000),links:Array.from(document.querySelectorAll("a[href]")).slice(0,200).map(a=>({url:a.href,text:a.innerText}))})',true);
    return {status:'read',url:safeUrl(window.webContents.getURL()),title:shortText(result.title).slice(0,160),
-     text:shortText(result.text)};
+     text:shortText(result.text),links:safeLinks(result.links)};
   }
   if(action==='find'){
     const needle=normalizeQuery(value);

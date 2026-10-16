@@ -9,4 +9,17 @@ function safeUrl(value){
 }
 function shortText(value){return String(value??'').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g,'').slice(0,6000)}
 function normalizeQuery(value){if(typeof value!=='string'||!value.trim()||value.length>120)throw Error('Enter up to 120 characters to find.');return value.trim()}
-module.exports={safeUrl,shortText,normalizeQuery};
+function safeLinks(rows){
+ if(!Array.isArray(rows))return [];
+ const seen=new Set(),links=[];
+ for(const row of rows.slice(0,200)){
+  if(!row||typeof row!=='object')continue;
+  try{
+   const url=safeUrl(row.url);if(seen.has(url))continue;
+   seen.add(url);links.push({url,text:shortText(row.text).trim().slice(0,160)||url});
+   if(links.length===30)break;
+  }catch{}
+ }
+ return links;
+}
+module.exports={safeUrl,shortText,normalizeQuery,safeLinks};
