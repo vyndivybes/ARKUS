@@ -146,11 +146,12 @@ async function refreshWorkflows(announce=true){
       });item.append(line,button);reminders.append(item);
     }
     if(announce){
-      for(const due of state.due){
-        const fingerprint=state.project+':'+due.id;
+      const across=await api('/workflow/due-all');
+      for(const due of across.due || []){
+        const fingerprint=due.project+':'+due.id;
         if(announcedDue.has(fingerprint))continue;
         announcedDue.add(fingerprint);
-        const alertText='Reminder: '+due.message;
+        const alertText='Reminder ('+due.project+'): '+due.message;
         toast(alertText);speak(alertText);
         if('Notification' in window && Notification.permission==='granted'){
           try{new Notification('ARKUS project reminder',{body:due.message,tag:'arkus-'+due.id});}catch{/* Notification is optional. */}
