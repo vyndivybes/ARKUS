@@ -32,6 +32,7 @@ from knowledge_base import KnowledgeBase, KnowledgeError
 from mcp_gateway import MCPGateway, MCPError
 from live_tokens import LiveTokenIssuer, LiveTokenError
 from action_executor import ActionExecutor, ActionError
+from smart_home import SmartHomeGateway, SmartHomeError
 
 # PERSONA: edit this single block to change ARKUS's character.
 PERSONA = """You are ARKUS, a dry, impeccably polite British butler. Occasionally say sir.
@@ -95,6 +96,7 @@ class App:
         self.companion = CompanionWorkflows(self.data)
         self.skill_forge = SkillForge(self.data)
         self.actions = ActionExecutor(self.data)
+        self.smart_home = SmartHomeGateway(self.data)
         self.parametric_cad = ParametricCAD(self.data)
         self.knowledge = KnowledgeBase(self.data)
         self.notes = self.projects.notes_path()
@@ -282,6 +284,46 @@ class App:
     def reject_action(self, identity):
         try: return self.actions.cancel(self.projects.active, identity)
         except ActionError as exc: raise UserError(str(exc),409) from None
+
+    def _smart_home_guard(self):
+        if self.config.get('enable_smart_home') is not True:
+            raise UserError('Smart home is disabled in local configuration. Set enable_smart_home to true to opt in.', 409)
+
+    @project_scoped
+    def smart_home_devices(self):
+        self._smart_home_guard()
+        return {'devices': self.smart_home.devices(self.projects.active),
+                'audit': self.smart_home.audit(self.projects.active)}
+
+    @project_scoped
+    def smart_home_discover(self, host, approved):
+        self._smart_home_guard()
+        try: return self.smart_home.discover(self.projects.active, host, approved=approved)
+        except SmartHomeError as exc: raise UserError(str(exc), 409) from None
+
+    @project_scoped
+    def smart_home_pair(self, candidate_id, approved):
+        self._smart_home_guard()
+        try: return self.smart_home.pair(self.projects.active, candidate_id, approved=approved)
+        except SmartHomeError as exc: raise UserError(str(exc), 409) from None
+
+    @project_scoped
+    def smart_home_propose(self, device_id, state):
+        self._smart_home_guard()
+        try: return self.smart_home.propose(self.projects.active, device_id, state)
+        except SmartHomeError as exc: raise UserError(str(exc), 409) from None
+
+    @project_scoped
+    def smart_home_execute(self, action_id, confirmation):
+        self._smart_home_guard()
+        try: return self.smart_home.execute(self.projects.active, action_id, confirmation)
+        except SmartHomeError as exc: raise UserError(str(exc), 409) from None
+
+    @project_scoped
+    def smart_home_unpair(self, device_id, approved):
+        self._smart_home_guard()
+        try: return self.smart_home.unpair(self.projects.active, device_id, approved=approved)
+        except SmartHomeError as exc: raise UserError(str(exc), 409) from None
 
     def skills(self):
         with self.lock:
@@ -813,6 +855,8 @@ class Handler(BaseHTTPRequestHandler):
             if path == '/api/session':
                 # Cross-origin browser scripts cannot read this response. No CORS header.
                 return self.send(200, {'token': self.app.token})
+            if path == '/smart-home/devices':
+                return self.send(200, self.app.smart_home_devices())
             if path == '/api/status':
                 return self.send(200, self.app.status())
             if path == '/api/graph':
@@ -923,6 +967,16 @@ class Handler(BaseHTTPRequestHandler):
                 result=self.app.mcp_discover(body.get("name"))
             elif path == '/mcp/call':
                 result=self.app.mcp_call(body.get("name"),body.get("tool"),body.get("arguments"),body.get("approved"))
+            elif path == '/smart-home/discover':
+                result = self.app.smart_home_discover(body.get('host'), body.get('approved'), project=body.get('project'))
+            elif path == '/smart-home/pair':
+                result = self.app.smart_home_pair(body.get('candidate_id'), body.get('approved'), project=body.get('project'))
+            elif path == '/smart-home/propose':
+                result = self.app.smart_home_propose(body.get('device_id'), body.get('state'), project=body.get('project'))
+            elif path == '/smart-home/execute':
+                result = self.app.smart_home_execute(body.get('action_id'), body.get('confirmation'), project=body.get('project'))
+            elif path == '/smart-home/unpair':
+                result = self.app.smart_home_unpair(body.get('device_id'), body.get('approved'), project=body.get('project'))
             elif path == '/chat':
                 result = self.app.chat(checked_question(body))
             elif path == '/remember':
