@@ -11,7 +11,7 @@ export function classifyHand(landmarks){
   const scale=distance(landmarks[5],landmarks[17]);
   if(scale<.045||scale>.7)return null; // Unreliable, distant or malformed hand.
   const thumb=landmarks[4],index=landmarks[8];
-  const pinch=distance(thumb,index)<scale*.35;
+  const pinch=distance(thumb,index)<scale*.35 && distance(index,landmarks[5])>scale*.95;
   const fingertips=[8,12,16,20],knuckles=[5,9,13,17];
   const ratios=fingertips.map((tip,i)=>distance(landmarks[tip],landmarks[knuckles[i]])/scale);
   let kind=null,point=null;
