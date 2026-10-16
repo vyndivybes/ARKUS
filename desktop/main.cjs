@@ -4,12 +4,13 @@ const { spawn } = require('node:child_process');
 const crypto = require('node:crypto');
 const path = require('node:path');
 const fs = require('node:fs');
+const {createResearchWindow}=require('./research-window.cjs');
 const PORT = Number(process.env.ARKUS_PORT || 4700);
 if (!Number.isInteger(PORT) || PORT < 1024 || PORT > 65535) throw new Error('Invalid ARKUS_PORT');
 const ORIGIN = `http://127.0.0.1:${PORT}`;
 const desktopToken = crypto.randomBytes(32).toString('hex');
 const hashSalt = crypto.randomBytes(32);
-let backend, mainWindow, card, sensorProcess, sensorPending, sensorEnabled = false, sensorBusy = false, timer;
+let backend, mainWindow, card, sensorProcess, sensorPending, sensorEnabled = false, sensorBusy = false, timer, research;
 const root = app.getAppPath();
 if (process.env.ARKUS_TEST_DATA_DIR) app.setPath('userData', path.resolve(process.env.ARKUS_TEST_DATA_DIR));
 const hash = value => crypto.createHmac('sha256', hashSalt).update(value).digest('hex');
@@ -128,6 +129,12 @@ app.whenReady().then(async () => {
   });
   mainWindow = secureWindow({ width: 1440, height: 900, minWidth: 900, minHeight: 650, show: process.env.ARKUS_TEST_HIDE !== '1', title: 'ARKUS', backgroundColor: '#060812' });
   mainWindow.loadURL(ORIGIN + (process.env.ARKUS_TEST_MUTE === '1' ? '/?mute=1' : '/'));
+  research=createResearchWindow(mainWindow);
+  ipcMain.handle('research-action',async(event,action,value)=>{
+    if(!mainWindow || event.sender!==mainWindow.webContents ||
+       !['open','read','find','close'].includes(action))throw Error('Untrusted research request');
+    return research.perform(action,value);
+  });
   const area = screen.getPrimaryDisplay().workArea;
   card = secureWindow({ x: area.x + area.width - 345, y: area.y + 16, width: 325, height: 175, frame: false, resizable: false, alwaysOnTop: true, focusable: false, skipTaskbar: true, show: false });
   card.loadFile(path.join(__dirname, 'card.html'));
@@ -141,7 +148,7 @@ app.whenReady().then(async () => {
     return request(`/focus/${action}`, { from_card: true });
   });
   timer = setInterval(tick, 1000);
-  mainWindow.on('closed', () => app.quit());
+  mainWindow.on('closed', () => {research?.close();app.quit();});
 }).catch(error => { dialog.showErrorBox('ARKUS could not start', error.message); app.quit(); });
 app.on('before-quit', () => { clearInterval(timer); sensorProcess?.kill(); backend?.kill(); });
 app.on('window-all-closed', () => app.quit());
