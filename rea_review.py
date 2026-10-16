@@ -105,7 +105,7 @@ def _collect_static_evidence(command):
         return raw
 
 
-def run_review(target, *, approved=False, storage_root=None):
+def run_review(target, *, approved=False, storage_root=None, source_paths=None, summary=False):
     """Capture a bounded static REA summary for an authorized app directory."""
     if approved is not True:
         raise ReviewError("Explicit operator approval (--approve) is required.")
@@ -152,9 +152,20 @@ def main():
         "--approve", action="store_true",
         help="Confirm you are authorized to inspect the selected application.",
     )
+    parser.add_argument(
+        "--source-path", action="append", dest="source_paths",
+        help="Analyze only this artifact-relative file; repeat for multiple files.",
+    )
+    parser.add_argument(
+        "--summary", action="store_true",
+        help="Return bounded identity, statistics, and selection metadata rather than the full graph.",
+    )
     args = parser.parse_args()
     try:
-        output = run_review(args.target, approved=args.approve)
+        output = run_review(
+            args.target, approved=args.approve,
+            source_paths=args.source_paths, summary=args.summary,
+        )
     except ReviewError as exc:
         parser.exit(1, f"REA review not saved: {exc}\n")
     print(f"REA static summary saved locally: {output}")
