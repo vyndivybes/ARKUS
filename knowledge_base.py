@@ -9,6 +9,7 @@ import re
 import sqlite3
 import threading
 import zipfile
+from contextlib import contextmanager
 from pathlib import Path
 from datetime import datetime,timezone
 from xml.etree import ElementTree
@@ -89,13 +90,21 @@ class KnowledgeBase:
         if any(p.is_symlink() for p in (self.root,path.parent,path)):
             raise KnowledgeError("Linked knowledge directories are not permitted.")
         return path
+    @contextmanager
     def _db(self,project):
         path=self._path(project);path.parent.mkdir(parents=True,exist_ok=True)
         db=sqlite3.connect(str(path),timeout=5)
-        db.execute("PRAGMA foreign_keys=ON")
-        db.execute("CREATE TABLE IF NOT EXISTS documents(id TEXT PRIMARY KEY,name TEXT NOT NULL,sha TEXT NOT NULL,uploaded TEXT NOT NULL,characters INTEGER NOT NULL)")
-        db.execute("CREATE VIRTUAL TABLE IF NOT EXISTS passages USING fts5(doc_id UNINDEXED,title,body,tokenize='unicode61')")
-        return db
+        try:
+            db.execute("PRAGMA foreign_keys=ON")
+            db.execute("CREATE TABLE IF NOT EXISTS documents(id TEXT PRIMARY KEY,name TEXT NOT NULL,sha TEXT NOT NULL,uploaded TEXT NOT NULL,characters INTEGER NOT NULL)")
+            db.execute("CREATE VIRTUAL TABLE IF NOT EXISTS passages USING fts5(doc_id UNINDEXED,title,body,tokenize='unicode61')")
+            yield db
+            db.commit()
+        except BaseException:
+            db.rollback()
+            raise
+        finally:
+            db.close()
     def import_bytes(self,project,name,raw):
         text=extract(name,raw)
         sha=hashlib.sha256(raw).hexdigest()
