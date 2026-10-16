@@ -112,6 +112,7 @@ async function activateProject(path,payload){
   if(sceneView)sceneView.positions=new Map();
   await refreshGraph(result.graph);
   await loadProjects(result.projects);
+  await loadSmartHome();
   await refreshWorkflows(false);
   await loadSkills();
   await loadActions();
