@@ -52,14 +52,14 @@ class MCPGateway:
         try:
             # urlopen is patched in tests; redirects are prohibited by the
             # opener used for the real request.
-            with urllib.request.urlopen(request,timeout=5) as response:
+            with urllib.request.build_opener(NoRedirect()).open(request,timeout=5) as response:
                 if response.headers.get("Content-Type","application/json").split(";")[0].strip()!="application/json":
                     raise MCPError("Only JSON MCP responses are supported; SSE is not enabled.")
                 raw=response.read(65_537)
                 if len(raw)>65_536:raise MCPError("MCP result exceeds 64 KB.")
                 result=json.loads(raw)
         except MCPError:raise
-        except (urllib.error.URLError,TimeoutError,OSError,ValueError) as exc:
+        except (urllib.error.URLError,urllib.error.HTTPError,TimeoutError,OSError,ValueError) as exc:
             raise MCPError("Local MCP request failed or returned invalid JSON.") from None
         if not isinstance(result,dict) or result.get("jsonrpc")!="2.0" or result.get("id")!=1 or "error" in result:
             raise MCPError("Local MCP server returned an error or mismatched response.")
