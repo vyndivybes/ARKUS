@@ -46,3 +46,57 @@ test('a stopped voice controller never creates or persists credentials',()=>{
   controller.stop();
   assert.equal(result,'Off');
 });
+
+test('consented Live session connects, streams PCM and stops all microphone tracks',async()=>{
+  const prior={AudioContext:globalThis.AudioContext,AudioWorkletNode:globalThis.AudioWorkletNode,
+               WebSocket:globalThis.WebSocket,navigator:globalThis.navigator};
+  const tracks=[{stopped:false,stop(){this.stopped=true}}];
+  let socket,node,requested=0;
+  class FakeAudioContext {
+    constructor(){this.sampleRate=48000;this.destination={};this.audioWorklet={addModule:async()=>{}};this.currentTime=0;}
+    resume(){return Promise.resolve()}
+    close(){return Promise.resolve()}
+    createMediaStreamSource(){return {connect(){},disconnect(){}}}
+  }
+  class FakeNode {
+    constructor(){node=this;this.port={onmessage:null};}
+    connect(){}disconnect(){}
+  }
+  class FakeSocket {
+    static OPEN=1;
+    constructor(url){this.url=url;this.readyState=0;this.sent=[];socket=this;this.bufferedAmount=0;}
+    send(message){this.sent.push(JSON.parse(message))}
+    close(){this.readyState=3;this.closed=true}
+  }
+  try{
+    globalThis.AudioContext=FakeAudioContext;
+    globalThis.AudioWorkletNode=FakeNode;
+    globalThis.WebSocket=FakeSocket;
+    Object.defineProperty(globalThis,'navigator',{configurable:true,value:{mediaDevices:{getUserMedia:async(opts)=>{
+      assert.equal(opts.audio.echoCancellation,true);requested++;return {getTracks:()=>tracks};}}}});
+    const states=[];
+    const live=createLiveVoice({getToken:async()=>({token:'auth_tokens/temporary123',model:'gemini-3.1-flash-live-preview'}),
+                                onState:x=>states.push(x)});
+    await live.start();
+    assert.equal(requested,1);
+    assert.equal(live.connecting,true);
+    socket.readyState=1;socket.onopen();
+    assert.equal(socket.sent[0].setup.generationConfig.responseModalities[0],'AUDIO');
+    await socket.onmessage({data:JSON.stringify({setupComplete:{}})});
+    assert.equal(live.active,true);
+    node.port.onmessage({data:new Float32Array(4096)});
+    assert.equal(socket.sent[1].realtimeInput.audio.mimeType,'audio/pcm;rate=16000');
+    assert.ok(!JSON.stringify(socket.sent).includes('temporary123'));
+    live.stop();
+    assert.equal(tracks[0].stopped,true);
+    assert.equal(socket.closed,true);
+    assert.equal(live.active,false);
+    assert.equal(states.at(-1),'Off');
+  }finally{
+    for(const [key,value] of Object.entries(prior)){
+      if(key==='navigator')Object.defineProperty(globalThis,key,{configurable:true,value});
+      else if(value===undefined)delete globalThis[key];
+      else globalThis[key]=value;
+    }
+  }
+});
