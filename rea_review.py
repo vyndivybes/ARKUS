@@ -1,7 +1,7 @@
 """Manual REA static JavaScript/Electron analysis, outside the ARKUS runtime.
 
 Developer-only; never invoked from ARKUS assistant, server, or MCP gateway.
-Outputs are untrusted local evidence and must be reviewed before sharing.
+The filtered summary contains identity/statistics, not the full feature graph.\nOutputs are untrusted local evidence and must be reviewed before sharing.
 """
 import argparse
 import json
@@ -82,10 +82,22 @@ def _collect_static_evidence(command):
                 f"REA exited with status {returncode}. "
                 "No evidence was saved; check the target and REA capabilities."
             )
+        stdout_file.seek(0, 2)
+        output_size = stdout_file.tell()
+        if output_size == 0:
+            stderr_file.seek(0, 2)
+            stderr_size = stderr_file.tell()
+            raise ReviewError(
+                f"REA completed but returned zero bytes of JSON output "
+                f"(stderr: {stderr_size} bytes); no evidence was saved."
+            )
+        if output_size > MAX_EVIDENCE_CHARS:
+            raise ReviewError(
+                f"REA generated {output_size:,} bytes of output and exceeded 8 MiB; "
+                "no evidence was saved. The compact summary filter may be unavailable."
+            )
         stdout_file.seek(0)
-        raw_bytes = stdout_file.read(MAX_EVIDENCE_CHARS + 1)
-        if not raw_bytes or len(raw_bytes) > MAX_EVIDENCE_CHARS:
-            raise ReviewError("REA evidence was empty or exceeded the size limit.")
+        raw_bytes = stdout_file.read()
         try:
             raw = raw_bytes.decode("utf-8")
         except UnicodeError:
@@ -94,7 +106,7 @@ def _collect_static_evidence(command):
 
 
 def run_review(target, *, approved=False, storage_root=None):
-    """Inspect an existing authorized application directory with static REA."""
+    """Capture a bounded static REA summary for an authorized app directory."""
     if approved is not True:
         raise ReviewError("Explicit operator approval (--approve) is required.")
     try:
@@ -109,6 +121,7 @@ def run_review(target, *, approved=False, storage_root=None):
     command = [
         npm, "--yes", REA_PACKAGE,
         "analyze-javascript-application", str(source), "--json",
+        "--filter-output", "evidence_id,normalized_result.statistics",
     ]
     raw = _collect_static_evidence(command)
     try:
@@ -124,7 +137,7 @@ def run_review(target, *, approved=False, storage_root=None):
     dest = dest.expanduser().resolve()
     dest.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    path = dest / f"rea-js-{stamp}-{uuid.uuid4().hex[:12]}.json"
+    path = dest / f"rea-js-summary-{stamp}-{uuid.uuid4().hex[:12]}.json"
     with path.open("x", encoding="utf-8") as output:
         output.write(raw)
     return path
@@ -132,7 +145,7 @@ def run_review(target, *, approved=False, storage_root=None):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Manually capture untrusted REA evidence in local work/."
+        description="Manually capture a compact REA static-analysis summary in local work/."
     )
     parser.add_argument("--target", required=True, help="Existing local JS/Electron app directory")
     parser.add_argument(
@@ -144,7 +157,7 @@ def main():
         output = run_review(args.target, approved=args.approve)
     except ReviewError as exc:
         parser.exit(1, f"REA review not saved: {exc}\n")
-    print(f"REA evidence saved locally: {output}")
+    print(f"REA static summary saved locally: {output}")
     print("Review and redact the JSON before sharing; it is untrusted analysis data.")
 
 
