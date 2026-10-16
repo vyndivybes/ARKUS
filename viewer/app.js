@@ -105,7 +105,7 @@ async function loadProjects(projects){
 }
 async function activateProject(path,payload){
   cadPreviewSession?.close();cadPreviewSession=null;$('cadPreviewCanvas').hidden=true;cadSelected=null;
-  liveVoice?.stop();stopHandGestures();researchQueue.cancel();
+  liveVoice?.stop();stopHandGestures();researchQueue.cancel();inspectedDevice=null;$('smartPair').disabled=true;
   const result=await api(path,payload);
   $('draftFilename').value='';$('draftContent').value='';$('draftValidation').textContent='';$('manualSkill').value='';
   $('source').hidden=true;
@@ -356,6 +356,88 @@ $('researchPlanNext').addEventListener('click',async()=>{
   try{await researchQueue.next();}catch(error){toast(error.message);}
 });
 $('researchPlanCancel').addEventListener('click',()=>researchQueue.cancel());
+
+let inspectedDevice=null;
+async function loadSmartHome(){
+  const panel=$('smartDevices');panel.replaceChildren();
+  try{
+    const result=await api('/smart-home/devices');
+    if(!result.devices?.length){panel.textContent='No trusted devices in this workspace.';return;}
+    for(const device of result.devices){
+      const card=document.createElement('div');card.className='workflow-card';
+      const title=document.createElement('strong');
+      title.textContent=(device.alias||device.model||'Smart device')+' · '+device.type;
+      const detail=document.createElement('p');
+      detail.textContent=device.host+' · '+device.model+' · fingerprint '+device.mac;
+      const actions=document.createElement('div');actions.className='row';
+      for(const desired of ['on','off']){
+        const button=document.createElement('button');button.type='button';
+        button.textContent='Request '+desired.toUpperCase();
+        button.addEventListener('click',async()=>{
+          try{
+            const proposal=await api('/smart-home/propose',{project:document.body.dataset.project,
+              device_id:device.id,state:desired});
+            const confirmation=window.prompt(
+              'Confirm a physical smart-home change. This could affect connected appliances.\\n'+
+              'Verify the device and type this exact phrase (90-second limit):\\n'+proposal.confirmation,'');
+            if(confirmation!==proposal.confirmation){
+              $('smartStatus').textContent='Device action not approved. Nothing was sent.';return;
+            }
+            const result=await api('/smart-home/execute',{project:document.body.dataset.project,
+              action_id:proposal.id,confirmation});
+            $('smartStatus').textContent='Confirmed device result: '+result.device+
+              (result.is_on?' is ON.':' is OFF.');
+          }catch(e){$('smartStatus').textContent='Device action not confirmed: '+e.message;}
+        });
+        actions.append(button);
+      }
+      const unpair=document.createElement('button');unpair.type='button';
+      unpair.textContent='Forget device';unpair.className='secondary';
+      unpair.addEventListener('click',async()=>{
+        if(!window.confirm('Forget trusted device '+device.host+'? This does not switch its power state.'))return;
+        try{
+          await api('/smart-home/unpair',{project:document.body.dataset.project,
+            device_id:device.id,approved:true});
+          await loadSmartHome();
+        }catch(e){$('smartStatus').textContent=e.message;}
+      });
+      card.append(title,detail,actions,unpair);panel.append(card);
+    }
+  }catch(e){panel.textContent=e.message;}
+}
+$('smartDiscover').addEventListener('click',async()=>{
+  const host=$('smartHost').value.trim();
+  if(!/^\\d{1,3}(?:\\.\\d{1,3}){3}$/.test(host)){
+    $('smartStatus').textContent='Enter an exact private LAN IPv4 address.';return;
+  }
+  if(!window.confirm('Inspect this exact LAN device?\\n'+host+
+      '\\nThe app sends a short, local-only Kasa discovery request to this address.'))return;
+  inspectedDevice=null;$('smartPair').disabled=true;
+  try{
+    const result=await api('/smart-home/discover',{project:document.body.dataset.project,host,approved:true});
+    inspectedDevice=result;
+    $('smartCandidate').textContent='Detected: '+result.alias+' · '+result.model+
+      ' · '+result.type+' · '+result.host+' · fingerprint '+result.mac+
+      '. Not trusted yet.';
+    $('smartPair').disabled=false;
+    $('smartStatus').textContent='Discovery completed. Inspect identity, then trust this device separately.';
+  }catch(e){$('smartStatus').textContent='Discovery unsuccessful: '+e.message;}
+});
+$('smartPair').addEventListener('click',async()=>{
+  const device=inspectedDevice;
+  if(!device)return;
+  if(!window.confirm('Trust this inspected local device in the ACTIVE workspace?\\n'+
+    device.alias+'\\n'+device.host+'\\n'+device.mac+
+    '\\nThis grants no automatic power changes.'))return;
+  try{
+    await api('/smart-home/pair',{project:document.body.dataset.project,
+      candidate_id:device.id,approved:true});
+    inspectedDevice=null;$('smartPair').disabled=true;
+    $('smartCandidate').textContent='Device trusted. No power change was requested.';
+    await loadSmartHome();
+  }catch(e){$('smartStatus').textContent='Pairing unsuccessful: '+e.message;}
+});
+$('smartRefresh').addEventListener('click',loadSmartHome);
 
 async function researchAction(action,value){
   const native=window.arkusDesktop?.researchAction;
@@ -995,7 +1077,7 @@ $('groundedSearch').addEventListener('click',async()=>{
 addEventListener('pagehide',()=>{cadPreviewSession?.close();liveVoice?.stop();stopHandGestures();researchQueue.cancel();stopScreen();stopCamera();stopListening();stopSpeech();});
 setupSpeech();
 
-await Promise.allSettled([refreshGraph(),loadModels(),refreshFocus(),diagnostics(),loadProjects(),loadCapabilities(),loadSkills(),loadActions(),loadCADModels(),loadKnowledge(),loadDraftFiles(),loadMCP()]);
+await Promise.allSettled([refreshGraph(),loadModels(),refreshFocus(),diagnostics(),loadProjects(),loadCapabilities(),loadSkills(),loadActions(),loadCADModels(),loadKnowledge(),loadDraftFiles(),loadMCP(),loadSmartHome()]);
 await refreshWorkflows(false);
 try{const history=await api('/projects/history');restoreConversation(history.messages || []);}catch(e){toast('Project history unavailable: '+e.message);}
 const hour=new Date().getHours();$('greeting').textContent=`Good ${hour<12?'morning':hour<17?'afternoon':'evening'}, sir. ${graph.nodes.length} notes indexed, all present and accounted for. What shall we explore?`;
