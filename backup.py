@@ -142,3 +142,22 @@ def restore_backup(archive_path, destination_dir, allow_nonempty=False):
         with target.open("xb") as output:
             output.write(content)
     return {"files": len(checked), "restored_to": str(dest), "credentials_restored": False}
+
+
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description="ARKUS local-data backup and empty-folder restore.")
+    commands = parser.add_subparsers(dest="command", required=True)
+    save = commands.add_parser("export")
+    save.add_argument("data_dir", help="ARKUS user-data folder")
+    save.add_argument("archive", help="New ZIP outside user-data folder")
+    recover = commands.add_parser("restore")
+    recover.add_argument("archive")
+    recover.add_argument("empty_destination", help="An empty folder; existing records are never overwritten")
+    args = parser.parse_args()
+    try:
+        result = (export_backup(args.data_dir, args.archive) if args.command == "export"
+                  else restore_backup(args.archive, args.empty_destination))
+        print(json.dumps(result, indent=2))
+    except (BackupError, OSError, zipfile.BadZipFile) as exc:
+        parser.exit(2, "Backup operation refused: " + str(exc) + "\n")
