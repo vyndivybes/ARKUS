@@ -93,7 +93,7 @@ test('oversized binary frames stop the session before JSON parsing',()=>harness(
 
 test('consent dialog can remain open longer than the provider connection deadline',()=>harness(async({newStream,setAcquire,deferred})=>{
   const gate=deferred();setAcquire(()=>gate.promise);
-  const controller=createLiveVoice({connectTimeoutMs:10,getToken:()=>new Promise(()=>{})});
+  const controller=createLiveVoice({connectTimeoutMs:10,getToken:async()=>({token:'auth_tokens/test123',model:'gemini-live-test'})});
   try{
     const pending=controller.start();
     await new Promise(resolve=>setTimeout(resolve,30));
