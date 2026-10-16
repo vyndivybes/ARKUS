@@ -141,3 +141,7 @@ ARKUS has a direct Google Gemini REST adapter for text chat and **Skill Forge dr
 ## Controlled local actions (v0.5.0)
 
 In Settings → Controlled actions, queue a calculation and select **Approve once** or **Reject**. Each action belongs to its project, persists in a bounded local audit history, and is explicitly approved individually. The only current executor is local arithmetic (add/subtract/multiply/divide); no shell, filesystem, browser or motor authority is granted. These are deliberately not autonomous LLM tools or general desktop automation. This lays the approval/audit groundwork for later integrations without falsely suggesting that remote code or physical devices can be operated.
+
+## Natural-language action drafting (v0.5.1)
+
+Use Settings → Controlled actions → **Prepare from words** for a bounded numerical calculation, e.g. `Multiply 12 by 8`. In offline mode only basic arithmetic grammar is recognized; when a configured, explicitly permitted model is available it may propose a strict JSON arithmetic operation. Proposals remain **pending** and never execute from model output alone. Review the displayed operands and choose **Approve once** or **Reject**. Any unrelated requested tool, browser action, file operation or motor control is refused. This is an initial constrained action intent pipeline, **not** full ADA automatic tool execution.
