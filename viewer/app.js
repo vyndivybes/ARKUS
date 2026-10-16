@@ -502,17 +502,32 @@ async function submit(text){
     speak(result.answer || 'No answer was returned, sir.');
   }catch(error){addMessage(error.message,'error');speak(error.message);}finally{busy=false;status(listening?'Listening':'Awaiting your next thought');}
 }
+let speechServiceUnavailable=false;
 function setupSpeech(){
   const Recognition=window.SpeechRecognition || window.webkitSpeechRecognition;
-  if(!Recognition){$('mic').disabled=true;$('mic').title='Speech recognition unavailable in this browser. Typing works.';return;}
+  if(!Recognition){
+    // Electron does not provide Chromium's Web Speech cloud recognizer. The primary mic
+    // must still work as an explicit launch/stop control for the native Live pathway.
+    $('mic').title='Microphone uses Gemini Live where browser dictation is unavailable.';
+    $('mic').setAttribute('aria-label','Start Gemini Live microphone');
+    $('mic').addEventListener('click',()=>$('liveMic').click());
+    return;
+  }
   recognizer=new Recognition();recognizer.continuous=true;recognizer.interimResults=true;recognizer.lang='en-GB';
   recognizer.onresult=event=>{clearTimeout(finishTimer);let completed='';for(let i=event.resultIndex;i<event.results.length;i++){const t=event.results[i][0].transcript.trim();if(/^(stop|wait)[.!]?$/i.test(t)){stopSpeech();speechBuffer='';$('question').value='';status('Paused speaking');return;}if(window.speechSynthesis?.speaking)continue;if(event.results[i].isFinal)completed += ` ${t}`;}
     if(completed.trim())speechBuffer=`${speechBuffer} ${completed}`.trim();$('question').value=speechBuffer || event.results[event.results.length-1][0].transcript;
     if(speechBuffer)finishTimer=setTimeout(flushSpeech,FINISH_MS);
   };
-  recognizer.onerror=event=>{toast(event.error==='network'?'Browser voice recognition is unavailable on this network. Use LIVE for Gemini voice if configured, or type your message.':`Microphone: ${event.error}. Tap the ear to retry.`);stopListening();};
+  recognizer.onerror=event=>{
+    if(event.error==='network'){
+      speechServiceUnavailable=true;
+      $('mic').title='Browser dictation unavailable. Click microphone to use Gemini Live.';
+      toast('Browser dictation is unavailable. Press microphone again to use Gemini Live if configured.');
+    }else toast(`Microphone: ${event.error}. Check system microphone permissions.`);
+    stopListening();
+  };
   recognizer.onend=()=>{listening=false;$('mic').classList.remove('active');$('mic').setAttribute('aria-label','Start microphone');status('Microphone off');if(speechBuffer){clearTimeout(finishTimer);finishTimer=setTimeout(flushSpeech,FINISH_MS);}};
-  $('mic').addEventListener('click',()=>{if(listening){stopListening();return;}if(liveVoice?.active||liveVoice?.connecting)liveVoice.stop();stopSpeech();try{recognizer.start();listening=true;$('mic').classList.add('active');$('mic').setAttribute('aria-label','Stop microphone');status('Listening');}catch(e){toast(e.message);}});
+  $('mic').addEventListener('click',()=>{if(speechServiceUnavailable){$('liveMic').click();return;}if(listening){stopListening();return;}if(liveVoice?.active||liveVoice?.connecting)liveVoice.stop();stopSpeech();try{recognizer.start();listening=true;$('mic').classList.add('active');$('mic').setAttribute('aria-label','Stop microphone');status('Listening');}catch(e){toast(e.message);}});
 }
 function flushSpeech(){const text=speechBuffer;speechBuffer='';$('question').value='';if(text)submit(text);}
 function stopListening(){listening=false;speechBuffer='';clearTimeout(finishTimer);recognizer?.stop();$('mic').classList.remove('active');}
@@ -677,7 +692,7 @@ $('liveMic').addEventListener('click',async()=>{
   if(liveVoice.active||liveVoice.connecting){liveVoice.stop();return;}
   if(MUTED||!$('voice').checked){toast('Live voice requires audio output. Disable mute and enable VOICE.');return;}
   if(!navigator.mediaDevices?.getUserMedia||!window.AudioWorkletNode){
-    toast('Gemini Live requires a browser with microphone and AudioWorklet support.');return;
+    toast('Microphone requires a secure context, working input device and AudioWorklet. Check Windows microphone permission or use the installed Windows app.');return;
   }
   try{
     const configured=await api('/api/status');

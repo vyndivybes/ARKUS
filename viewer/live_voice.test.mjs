@@ -207,3 +207,11 @@ test('unknown tool requests never invoke local actions', async()=>{
   voice.stop();
   assert.deepEqual(calls,[]);
 });
+
+test('microphone diagnostics explain blocked, missing and busy input devices without exposing credentials',async()=>{
+  const {microphoneErrorMessage}=await import('./live_voice.js');
+  assert.match(microphoneErrorMessage({name:'NotAllowedError',message:'secret credential'}),/Windows Settings.*Microphone/);
+  assert.match(microphoneErrorMessage({name:'NotFoundError'}),/No microphone input/);
+  assert.match(microphoneErrorMessage({name:'NotReadableError'}),/exclusive microphone access/);
+  assert.ok(!microphoneErrorMessage({name:'NotAllowedError',message:'secret credential'}).includes('secret credential'));
+});

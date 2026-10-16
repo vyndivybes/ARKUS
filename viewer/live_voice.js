@@ -97,6 +97,25 @@ export function parseLiveMessage(message){
   return {type:'content',audio,inputText:c.inputTranscription?.text||'',outputText:c.outputTranscription?.text||'',interrupted:c.interrupted===true,turnComplete:c.turnComplete===true};
 }
 
+export function microphoneErrorMessage(error){
+  switch(error?.name){
+    case 'NotAllowedError':
+    case 'PermissionDeniedError':
+    case 'SecurityError':
+      return 'Microphone access denied. In Windows Settings > Privacy & security > Microphone, enable Microphone access and desktop app access, then grant ARKUS permission.';
+    case 'NotFoundError':
+    case 'DevicesNotFoundError':
+      return 'No microphone input found. Connect or select an input device in Windows Sound settings and retry.';
+    case 'NotReadableError':
+    case 'TrackStartError':
+      return 'Microphone cannot start. Close apps holding exclusive microphone access, check Windows Sound input, and retry.';
+    case 'OverconstrainedError':
+      return 'Selected microphone does not support the requested audio settings.';
+    default:
+      return typeof error?.message==='string' && error.message ? error.message.slice(0,240) : 'Live microphone unavailable.';
+  }
+}
+
 export function cameraMessage(jpegDataUrl){
   if(typeof jpegDataUrl!=='string' || jpegDataUrl.length>900000 || !/^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/.test(jpegDataUrl)){
     throw new Error('Camera frame must be a bounded JPEG data URL.');
@@ -225,9 +244,6 @@ export function createLiveVoice({getToken,getCameraFrame=()=>null,callTool=async
     const current=++session;
     pending=true;ready=false;finalInput='';finalOutput='';completedCalls.clear();cancelledCalls.clear();
     update('Requesting microphone…');
-    connectTimer=setTimeout(()=>{
-      if(session===current){onError('Live connection timed out. Check microphone permission, model access and network, then retry.');stop();}
-    },connectTimeoutMs);
     try{
       // Media consent before issuing a one-use token avoids consuming unused tokens.
       const output=new AudioContext();outputContext=output;
@@ -237,6 +253,11 @@ export function createLiveVoice({getToken,getCameraFrame=()=>null,callTool=async
         audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true},video:false});
       if(session!==current){for(const track of acquired.getTracks())track.stop();return;}
       stream=acquired;
+      // The user's operating-system consent prompt is not a network timeout.
+      // Start a bounded provider deadline only after the microphone is acquired.
+      connectTimer=setTimeout(()=>{
+        if(session===current){onError('Gemini Live connection timed out. Check model access, provider quota and network, then retry.');stop();}
+      },connectTimeoutMs);
       for(const track of acquired.getTracks())track.addEventListener?.('ended',()=>{
         if(session===current){onError('Live microphone disconnected. Reconnect your microphone and start again.');stop();}
       },{once:true});
@@ -279,7 +300,7 @@ export function createLiveVoice({getToken,getCameraFrame=()=>null,callTool=async
       socket.onerror=()=>{if(session===current){onError('Gemini Live WebSocket failed. Check model access, provider quota and network.');stop();}};
       socket.onclose=()=>{if(session===current){onError('Live connection ended.');stop();}};
     }catch(error){
-      if(session===current){onError(error?.message||'Live microphone unavailable.');stop();}
+      if(session===current){onError(microphoneErrorMessage(error));stop();}
     }
   }
   return {start,stop,sendVideoFrame,get active(){return ready},get connecting(){return pending}};
