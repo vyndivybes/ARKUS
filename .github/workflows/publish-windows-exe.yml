@@ -18,11 +18,18 @@ on:
       - parametric_cad.py
       - knowledge_base.py
       - mcp_gateway.py
-      - scripts/prepare-python.ps1
+      - scripts/**
+      - desktop/**
+      - focus.py
+      - build.py
       - server.py
       - viewer/**
       - tests/**
   workflow_dispatch:
+
+concurrency:
+  group: arkus-windows-publication-${{ github.ref }}
+  cancel-in-progress: false
 
 permissions:
   contents: write

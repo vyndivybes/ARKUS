@@ -1,7 +1,6 @@
 import {createCameraCapture} from './camera_capture.js';
 import {requestScreenCapture} from './screen_capture.js';
 import {createLiveVoice} from './live_voice.js';
-import {runLiveResearch} from './research_tools.js';
 import {classifyGesture,GestureGate} from './gestures.js';
 // One finish window for the full spoken thought; no organ starts this microphone.
 export const FINISH_MS = 900;
@@ -328,6 +327,11 @@ async function researchAction(action,value){
     $('researchResult').textContent=result.status==='read'
       ?(result.title+'\n'+result.url+'\n\n'+result.text)
       :JSON.stringify(result,null,2);
+    $('researchLinks').replaceChildren();
+    for(const link of result.links||[]){
+      const button=document.createElement('button');button.className='secondary';button.textContent=link.text;button.title=link.url;
+      button.addEventListener('click',()=>researchAction('open',link.url));$('researchLinks').append(button);
+    }
   }catch(error){
     const message=error.message==='Open a reference page first.'
       ?'Open a reference first: choose “Search and read public article” for a Wikipedia topic, or enter a public HTTPS URL and choose “Open page”. Then use “Find on page”.'
@@ -637,13 +641,6 @@ liveVoice=createLiveVoice({
   getToken:()=>{liveProject=document.body.dataset.project;return api('/live/token',{project:liveProject});},
   getCameraFrame:()=>cameraStream && $('cameraLiveConsent').checked ? frame($('cameraPreview'),640) : null,
   callTool:async(name,arguments_)=>{
-    if(name.startsWith('research_')){
-      return runLiveResearch(name,arguments_,{
-        enabled:()=>$('researchLiveConsent').checked,
-        invoke:window.arkusDesktop?.researchAction,
-        confirmSearch:query=>window.confirm('ARKUS wants to send this public search query to Wikipedia and share the result with Gemini. Approve?\n'+query)
-      });
-    }
     if(name==='list_project_files')return api('/workspace/files',{project:liveProject});
     if(name==='read_project_file')return api('/workspace/read',{name:arguments_.name,project:liveProject});
     if(name==='write_project_file'){
@@ -662,11 +659,6 @@ liveVoice=createLiveVoice({
   },
   onExchange:(user,assistant)=>api('/live/history',{user,assistant,project:liveProject}),
   onToolResult:(name,result)=>{
-    if(name.startsWith('research_')){
-      $('researchResult').textContent=result.status==='read'||result.status==='followed'
-        ?(result.title+'\n'+result.url+'\n\n'+result.text)
-        :JSON.stringify(result,null,2);
-    }
     if(name==='remember_note'){refreshGraph().catch(error=>toast(error.message));}
     if(name==='set_reminder'){refreshWorkflows(false).catch(error=>toast(error.message));}
     if(result?.error)toast(result.error);
@@ -789,8 +781,6 @@ $('researchOpen').addEventListener('click',()=>researchAction('open',$('research
 $('researchSearch').addEventListener('click',()=>researchAction('search',$('researchTopic').value.trim()));
 $('researchRead').addEventListener('click',()=>researchAction('read'));
 $('researchFind').addEventListener('click',()=>researchAction('find',$('researchQuery').value));
-$('researchLinks').addEventListener('click',()=>researchAction('links'));
-$('researchFollow').addEventListener('click',()=>researchAction('follow',Number($('researchLinkNumber').value)));
 $('researchClose').addEventListener('click',()=>researchAction('close'));
 $('cadAddPart').addEventListener('click',()=>{
   try{const existing=$('cadAssembly').value.trim()?CADParts():[];
@@ -828,6 +818,12 @@ $('cadExport').addEventListener('click',async()=>{
   try{const result=await api('/cad/export',{id:cadSelected.id});downloadCAD(result);
     $('cadAssemblyStatus').textContent=result.triangles+' triangles in STL · revision '+result.revision+'.';
   }catch(error){toast(error.message);}
+});
+$('draftExternalEditor').addEventListener('click',async()=>{
+  const open=window.arkusDesktop?.openProjectDraft;
+  if(typeof open!=='function'){toast('Opening a saved draft in Notepad requires the Windows desktop app.');return;}
+  try{await open(document.body.dataset.project,$('draftFilename').value.trim());toast('Windows Notepad started for the saved draft. Reload the draft after editing.');}
+  catch(error){toast(error.message);}
 });
 $('draftValidate').addEventListener('click',async()=>{
   try{

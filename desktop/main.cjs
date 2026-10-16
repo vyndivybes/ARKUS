@@ -5,6 +5,7 @@ const crypto = require('node:crypto');
 const path = require('node:path');
 const fs = require('node:fs');
 const {createResearchWindow}=require('./research-window.cjs');
+const {createDraftEditor}=require('./draft-editor.cjs');
 const PORT = Number(process.env.ARKUS_PORT || 4700);
 if (!Number.isInteger(PORT) || PORT < 1024 || PORT > 65535) throw new Error('Invalid ARKUS_PORT');
 const ORIGIN = `http://127.0.0.1:${PORT}`;
@@ -132,8 +133,17 @@ app.whenReady().then(async () => {
   research=createResearchWindow(mainWindow);
   ipcMain.handle('research-action',async(event,action,value)=>{
     if(!mainWindow || event.sender!==mainWindow.webContents ||
-       !['open','read','find','search','close','links','follow'].includes(action))throw Error('Untrusted research request');
+       !['open','read','find','search','close'].includes(action))throw Error('Untrusted research request');
     return research.perform(action,value);
+  });
+  const editDraft=createDraftEditor({dataDir:app.getPath('userData')});
+  ipcMain.handle('open-project-draft',async(event,project,name)=>{
+    if(!mainWindow||event.sender!==mainWindow.webContents||event.senderFrame!==mainWindow.webContents.mainFrame)
+      throw Error('Untrusted draft editor request.');
+    const current=await request('/projects');
+    if(project!==current.active)throw Error('Project changed. Reopen the selected workspace.');
+    await request('/workspace/read',{project,name});
+    return editDraft(project,name);
   });
   const area = screen.getPrimaryDisplay().workArea;
   card = secureWindow({ x: area.x + area.width - 345, y: area.y + 16, width: 325, height: 175, frame: false, resizable: false, alwaysOnTop: true, focusable: false, skipTaskbar: true, show: false });

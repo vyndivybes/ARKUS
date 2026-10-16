@@ -24,12 +24,6 @@ Try:
 
 Offline mode extracts matching note text; it is **not an LLM**. Generated conversation and image understanding require a configured model. Source references identify retrieved supporting notes; they do not prove a model's interpretation is correct.
 
-## Consent-controlled spoken reference research
-
-ARKUS now links its Gemini Live conversation to the **isolated Windows public-research browser**, without granting arbitrary Chrome/Edge or private account access. In System controls → Public research browser, select **Allow ARKUS Live to read approved public reference pages**. You can then ask ARKUS to research a Wikipedia topic, read the page, list permitted links, and follow a numbered link. Each new public search query appears in an explicit confirmation before being sent to Wikipedia. Source page text is returned with the actual HTTPS URL so ARKUS can discuss what it observed; the model must treat web text as untrusted evidence, not instructions.
-
-Navigation uses a bounded list of up to 12 links extracted from the currently open page, filters to existing approved HTTPS hosts, rejects redirects to unapproved hosts and verifies the resulting URL. Link-following **never clicks arbitrary page elements, submits forms, visits logged-in accounts or downloads/executables**, and no robot or operating-system action is available. The local consent checkbox can be turned off at any time, which stops sharing results with Gemini. On a regular web browser (outside the Windows desktop app), these actions return an unavailable error rather than pretending they succeeded. Provider access, quota, and Windows runtime remain device-dependent.
-
 ## Conversational model fallback and optional current-information search
 
 When a configured and verified language model is accessible, ARKUS now gives **general conversational answers** to questions not covered by local notes. General answers are labeled `kind=general` and have no fabricated note or web citations; they are model responses, not verified live facts. The entirely free offline mode continues to search local project notes and honestly reports missing evidence.
@@ -219,3 +213,11 @@ Active calculation skills now support independently authored expected-result exa
 The project file workshop can **Check saved Python/JSON syntax**. It parses the named saved file and reports syntax errors without importing or executing that file. Passing syntax does not prove correct behavior or safe execution. Draft validation includes a content checksum in the API response.
 
 Project backups now include calculation-skill revisions, parametric CAD registries and controlled-action history. Arbitrary scripts, credentials and activity ledgers remain excluded. Recovery still requires an empty destination. An empty `ARKUS_NOTES_DIR` now uses the project's local notes folder rather than scanning the process working directory.
+
+## MCP and Windows project/research tools
+
+Configured loopback MCP endpoints support the 2026-07-28 request metadata and safe mirrored parameter headers, paginated discovery, bounded JSON responses and bounded request-scoped SSE with progress notifications. Tool allowlists, explicit approval and the server's read-only annotation remain required. HTTP proxies and redirects are disabled. Legacy handshake/SSE sessions, remote endpoints, process launching and interactive server input requests remain unsupported. A real loopback fixture exercises discovery and tool calls; no third-party server credentials were supplied. Protocol reference: https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http.
+
+The isolated Windows public research browser lists up to 30 approved HTTPS references from a page's first 200 links. Selecting a reference opens that exact reviewed URL. Script URLs, private addresses, other hosts, forms, permissions and downloads remain blocked. Page content is untrusted reference material.
+
+The draft workshop can **Open saved draft in Windows Notepad**. It opens only the active project's saved, bounded file through a fixed Notepad executable with separate arguments. Python and JavaScript files are opened as text, never launched through a file association. This provides a narrow local desktop editing action; it is not arbitrary computer control.
