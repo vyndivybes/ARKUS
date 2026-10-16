@@ -137,3 +137,7 @@ ARKUS has a direct Google Gemini REST adapter for text chat and **Skill Forge dr
 ```
 
 **Default fail-closed cost guard:** `allow_paid_models:false` blocks Gemini generation calls because ARKUS cannot establish Google's billing/free-tier state from the API catalog. Changing it to true explicitly permits provider-billed requests; never do this unless you accept that costs may occur. Model availability and quotas depend on your Google account. The API key is sent in Google's `X-goog-api-key` request header, not in the URL. Model lists do not establish live credentials until tested. This adapter does not yet provide streaming duplex audio, webcam/vision through Gemini, code-execution sandbox or autonomous self-upgrade.
+
+## Controlled local actions (v0.5.0)
+
+In Settings → Controlled actions, queue a calculation and select **Approve once** or **Reject**. Each action belongs to its project, persists in a bounded local audit history, and is explicitly approved individually. The only current executor is local arithmetic (add/subtract/multiply/divide); no shell, filesystem, browser or motor authority is granted. These are deliberately not autonomous LLM tools or general desktop automation. This lays the approval/audit groundwork for later integrations without falsely suggesting that remote code or physical devices can be operated.

@@ -27,6 +27,7 @@ from cad_shapes import GeometryError, generate as generate_stl
 from backup import BackupError, export_backup
 from skill_forge import SkillForge, SkillError
 from gemini_adapter import GeminiAdapter, GeminiError
+from action_executor import ActionExecutor, ActionError
 
 # PERSONA: edit this single block to change ARKUS's character.
 PERSONA = """You are ARKUS, a dry, impeccably polite British butler. Occasionally say sir.
@@ -68,6 +69,7 @@ class App:
         self.projects = ProjectStore(self.data, self.default_notes)
         self.companion = CompanionWorkflows(self.data)
         self.skill_forge = SkillForge(self.data)
+        self.actions = ActionExecutor(self.data)
         self.notes = self.projects.notes_path()
         self.notes.mkdir(parents=True, exist_ok=True)
         self.config_path = Path(os.environ.get('ARKUS_CONFIG', ROOT / 'config.json')).resolve()
@@ -127,6 +129,21 @@ class App:
             return generate_stl(shape, dimensions)
         except GeometryError as exc:
             raise UserError(str(exc), 409) from None
+
+    def action_history(self):
+        return {"actions": self.actions.history(self.projects.active)}
+
+    def propose_action(self, tool, arguments):
+        try: return self.actions.propose(self.projects.active, tool, arguments)
+        except ActionError as exc: raise UserError(str(exc),409) from None
+
+    def approve_action(self, identity, approved):
+        try: return self.actions.execute(self.projects.active, identity, approved)
+        except ActionError as exc: raise UserError(str(exc),409) from None
+
+    def reject_action(self, identity):
+        try: return self.actions.cancel(self.projects.active, identity)
+        except ActionError as exc: raise UserError(str(exc),409) from None
 
     def skills(self):
         with self.lock:
@@ -506,6 +523,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, self.app.projects.state())
             if path == '/projects/history':
                 return self.send(200, {'messages': self.app.projects.read_history()})
+            if path == '/actions':
+                return self.send(200, self.app.action_history())
             if path == '/skills':
                 return self.send(200, self.app.skills())
             if path == '/workflow/due-all':
@@ -592,6 +611,12 @@ class Handler(BaseHTTPRequestHandler):
                 result = self.app.focus.command(path.split('/')[-1], body)
             elif path == '/cad/primitive':
                 result = self.app.generate_offline_cad(body.get('shape'), body.get('dimensions'))
+            elif path == '/actions/propose':
+                result = self.app.propose_action(body.get('tool'),body.get('arguments'))
+            elif path == '/actions/approve':
+                result = self.app.approve_action(body.get('id'),body.get('approved'))
+            elif path == '/actions/cancel':
+                result = self.app.reject_action(body.get('id'))
             elif path == '/skills/propose':
                 result = self.app.propose_skill(body.get('spec'))
             elif path == '/skills/generate':
