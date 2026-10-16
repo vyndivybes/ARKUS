@@ -379,8 +379,8 @@ async function loadSmartHome(){
             const proposal=await api('/smart-home/propose',{project:document.body.dataset.project,
               device_id:device.id,state:desired});
             const confirmation=window.prompt(
-              'Confirm a physical smart-home change. This could affect connected appliances.\\n'+
-              'Verify the device and type this exact phrase (90-second limit):\\n'+proposal.confirmation,'');
+              'Confirm a physical smart-home change. This could affect connected appliances.\n'+
+              'Verify the device and type this exact phrase (90-second limit):\n'+proposal.confirmation,'');
             if(confirmation!==proposal.confirmation){
               $('smartStatus').textContent='Device action not approved. Nothing was sent.';return;
             }
@@ -411,8 +411,8 @@ $('smartDiscover').addEventListener('click',async()=>{
   if(!/^\\d{1,3}(?:\\.\\d{1,3}){3}$/.test(host)){
     $('smartStatus').textContent='Enter an exact private LAN IPv4 address.';return;
   }
-  if(!window.confirm('Inspect this exact LAN device?\\n'+host+
-      '\\nThe app sends a short, local-only Kasa discovery request to this address.'))return;
+  if(!window.confirm('Inspect this exact LAN device?\n'+host+
+      '\nThe app sends a short, local-only Kasa discovery request to this address.'))return;
   inspectedDevice=null;$('smartPair').disabled=true;
   try{
     const result=await api('/smart-home/discover',{project:document.body.dataset.project,host,approved:true});
@@ -427,9 +427,9 @@ $('smartDiscover').addEventListener('click',async()=>{
 $('smartPair').addEventListener('click',async()=>{
   const device=inspectedDevice;
   if(!device)return;
-  if(!window.confirm('Trust this inspected local device in the ACTIVE workspace?\\n'+
-    device.alias+'\\n'+device.host+'\\n'+device.mac+
-    '\\nThis grants no automatic power changes.'))return;
+  if(!window.confirm('Trust this inspected local device in the ACTIVE workspace?\n'+
+    device.alias+'\n'+device.host+'\n'+device.mac+
+    '\nThis grants no automatic power changes.'))return;
   try{
     await api('/smart-home/pair',{project:document.body.dataset.project,
       candidate_id:device.id,approved:true});
