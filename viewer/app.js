@@ -427,6 +427,7 @@ async function submit(text){
     else showSources(result.kind,result.nodes || []);
     addMessage(result.answer || 'The server returned no answer.','assistant',result.nodes || []);
     renderDocumentReferences(result.document_sources);
+    renderWebReferences(result.sources);
     speak(result.answer || 'No answer was returned, sir.');
   }catch(error){addMessage(error.message,'error');speak(error.message);}finally{busy=false;status(listening?'Listening':'Awaiting your next thought');}
 }
