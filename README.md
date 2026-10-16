@@ -221,3 +221,7 @@ Configured loopback MCP endpoints support the 2026-07-28 request metadata and sa
 The isolated Windows public research browser lists up to 30 approved HTTPS references from a page's first 200 links. Selecting a reference opens that exact reviewed URL. Script URLs, private addresses, other hosts, forms, permissions and downloads remain blocked. Page content is untrusted reference material.
 
 The draft workshop can **Open saved draft in Windows Notepad**. It opens only the active project's saved, bounded file through a fixed Notepad executable with separate arguments. Python and JavaScript files are opened as text, never launched through a file association. This provides a narrow local desktop editing action; it is not arbitrary computer control.
+
+## Windows microphone behavior
+
+The primary microphone button now routes to Gemini Live when browser speech recognition is missing (as on many Electron installs). When browser dictation fails with a network error, the next microphone click uses the same explicit Gemini Live start/stop action. Native audio still requires a user-configured Gemini provider, a supported model, explicit paid-model opt-in and microphone permissions; ARKUS does not silently enable billable calls. A declined Windows microphone permission reports the appropriate Settings path. Permission prompts are no longer counted against the provider connection deadline. Actual physical input and provider access still require on-device acceptance.

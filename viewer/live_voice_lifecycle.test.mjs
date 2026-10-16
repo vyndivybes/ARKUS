@@ -90,3 +90,15 @@ test('oversized binary frames stop the session before JSON parsing',()=>harness(
   await voice.start();await sockets[0].onmessage({data:new ArrayBuffer(1_000_001)});
   assert.equal(voice.connecting,false);assert.match(errors.at(-1),/processed/i);
 }));
+
+test('consent dialog can remain open longer than the provider connection deadline',()=>harness(async({newStream,setAcquire,deferred})=>{
+  const gate=deferred();setAcquire(()=>gate.promise);
+  const controller=createLiveVoice({connectTimeoutMs:10,getToken:async()=>({token:'auth_tokens/test123',model:'gemini-live-test'})});
+  try{
+    const pending=controller.start();
+    await new Promise(resolve=>setTimeout(resolve,30));
+    assert.equal(controller.connecting,true);
+    gate.resolve(newStream());await pending;
+    assert.equal(controller.connecting,true);
+  }finally{controller.stop();}
+}));
