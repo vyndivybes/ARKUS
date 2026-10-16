@@ -12,7 +12,7 @@ const target=path.join(__dirname,'..','viewer','models','hand_landmarker.task');
 
 function verifyModel(bytes){
   if(!Buffer.isBuffer(bytes)||bytes.length!==expectedSize)return false;
-  return crypto.createHash('sha1').update('blob '+bytes.length+'\\0').update(bytes).digest('hex')===expectedBlob;
+  return crypto.createHash('sha1').update('blob '+bytes.length).update(Buffer.from([0])).update(bytes).digest('hex')===expectedBlob;
 }
 async function downloadModel(){
   if(fs.existsSync(target) && verifyModel(fs.readFileSync(target))){
