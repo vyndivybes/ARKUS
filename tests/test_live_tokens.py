@@ -111,6 +111,60 @@ class LiveTokenTests(unittest.TestCase):
             app.live_token()
             mock.return_value.create.assert_called_once_with("gemini-3.8-live")
 
+
+    def test_rejected_constraints_never_downgrade_token_by_default(self):
+        attempts=[]
+        def reply(req,timeout):
+            attempts.append(json.loads(req.data))
+            raise HTTPError(req.full_url,400,"bad constraints",{},
+                            io.BytesIO(b'{"error":{"status":"INVALID_ARGUMENT"}}'))
+        with patch("live_tokens.urllib.request.urlopen",side_effect=reply):
+            with self.assertRaisesRegex(LiveTokenError,"HTTP 400"):
+                LiveTokenIssuer("PRIVATE_TEST_KEY_123").create("gemini-3.8-live")
+        self.assertEqual(len(attempts),1)
+        self.assertIn("liveConnectConstraints",attempts[0])
+
+    def test_explicit_fallback_retries_once_with_single_use_basic_token(self):
+        attempts=[]
+        def reply(req,timeout):
+            attempts.append(json.loads(req.data))
+            if len(attempts)==1:
+                raise HTTPError(req.full_url,400,"rejected",{},io.BytesIO(b'{}'))
+            return io.BytesIO(b'{"name":"auth_tokens/limited_basic_token"}')
+        with patch("live_tokens.urllib.request.urlopen",side_effect=reply):
+            result=LiveTokenIssuer("PRIVATE_TEST_KEY_123").create(
+                "gemini-3.8-live", allow_unconstrained_fallback=True)
+        self.assertEqual(len(attempts),2)
+        self.assertIn("liveConnectConstraints",attempts[0])
+        self.assertNotIn("liveConnectConstraints",attempts[1])
+        self.assertEqual(attempts[1]["uses"],1)
+        self.assertIn("newSessionExpireTime",attempts[1])
+        self.assertEqual(result["scope"],"basic-one-use")
+        self.assertEqual(result["model"],"gemini-3.8-live")
+        self.assertNotIn("PRIVATE_TEST_KEY_123",json.dumps(result))
+
+    def test_optin_fallback_never_retries_for_authentication_error(self):
+        attempts=[]
+        def deny(req,timeout):
+            attempts.append(json.loads(req.data))
+            raise HTTPError(req.full_url,403,"forbidden",{},io.BytesIO(b'{}'))
+        with patch("live_tokens.urllib.request.urlopen",side_effect=deny):
+            with self.assertRaisesRegex(LiveTokenError,"403"):
+                LiveTokenIssuer("PRIVATE_TEST_KEY_123").create(
+                    "gemini-3.8-live", allow_unconstrained_fallback=True)
+        self.assertEqual(len(attempts),1)
+
+    def test_local_configuration_requires_explicit_fallback_permission(self):
+        app=self.app()
+        app.config["allow_unconstrained_live_token"]=True
+        with patch("server.LiveTokenIssuer") as issuer:
+            issuer.return_value.create.return_value={
+                "token":"auth_tokens/limited_basic_token",
+                "model":"gemini-3.8-live","scope":"basic-one-use"}
+            app.live_token()
+            issuer.return_value.create.assert_called_once_with(
+                "gemini-3.1-flash-live-preview",allow_unconstrained_fallback=True)
+
     def test_invalid_response_fails_without_key_or_provider_body(self):
         with patch("live_tokens.urllib.request.urlopen") as request:
             request.return_value.__enter__.return_value.read.return_value=b'{}'
