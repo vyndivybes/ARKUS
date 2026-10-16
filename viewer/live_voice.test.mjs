@@ -14,7 +14,8 @@ test('setup binds exact model and speech-only modalities with no executable tool
   assert.deepEqual(setup.generationConfig.responseModalities,['AUDIO']);
   assert.deepEqual(setup.tools[0].functionDeclarations.map(d=>d.name),[
     'get_briefing','search_knowledge','remember_note','set_reminder',
-    'list_project_files','read_project_file','write_project_file'
+    'list_project_files','read_project_file','write_project_file',
+    'research_search','research_read','research_links','research_follow'
   ]);
   assert.ok(!JSON.stringify(setup.tools).includes('run_shell'));
   assert.throws(()=>setupMessage('../wrong-model'));
