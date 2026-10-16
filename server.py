@@ -24,6 +24,7 @@ from focus import Focus
 from projects import ProjectError, ProjectStore
 from companion import CAPABILITIES, CompanionWorkflows, WorkflowError
 from cad_shapes import GeometryError, generate as generate_stl
+from parametric_cad import ParametricCAD, CADModelError
 from backup import BackupError, export_backup
 from skill_forge import SkillForge, SkillError
 from gemini_adapter import GeminiAdapter, GeminiError
@@ -71,6 +72,7 @@ class App:
         self.companion = CompanionWorkflows(self.data)
         self.skill_forge = SkillForge(self.data)
         self.actions = ActionExecutor(self.data)
+        self.parametric_cad = ParametricCAD(self.data)
         self.notes = self.projects.notes_path()
         self.notes.mkdir(parents=True, exist_ok=True)
         self.config_path = Path(os.environ.get('ARKUS_CONFIG', ROOT / 'config.json')).resolve()
@@ -131,6 +133,29 @@ class App:
             return generate_stl(shape, dimensions)
         except GeometryError as exc:
             raise UserError(str(exc), 409) from None
+
+    def cad_models(self):
+        with self.lock: return {"models":self.parametric_cad.list(self.projects.active)}
+
+    def cad_create(self,name,parts):
+        with self.lock:
+            try:return self.parametric_cad.create(self.projects.active,name,parts)
+            except CADModelError as exc:raise UserError(str(exc),409) from None
+
+    def cad_revise(self,identity,parts,revision):
+        with self.lock:
+            try:return self.parametric_cad.revise(self.projects.active,identity,parts,revision)
+            except CADModelError as exc:raise UserError(str(exc),409) from None
+
+    def cad_get(self,identity):
+        with self.lock:
+            try:return self.parametric_cad.get(self.projects.active,identity)
+            except CADModelError as exc:raise UserError(str(exc),404) from None
+
+    def cad_export(self,identity):
+        with self.lock:
+            try:return self.parametric_cad.export(self.projects.active,identity)
+            except CADModelError as exc:raise UserError(str(exc),409) from None
 
     def live_token(self):
         """One-use renderer token; never expose a persistent Google credential."""
@@ -568,6 +593,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, self.app.projects.state())
             if path == '/projects/history':
                 return self.send(200, {'messages': self.app.projects.read_history()})
+            if path == '/cad/models':
+                return self.send(200,self.app.cad_models())
             if path == '/actions':
                 return self.send(200, self.app.action_history())
             if path == '/skills':
@@ -656,6 +683,14 @@ class Handler(BaseHTTPRequestHandler):
                 result = {'ok': True}
             elif path.startswith('/focus/'):
                 result = self.app.focus.command(path.split('/')[-1], body)
+            elif path == '/cad/create':
+                result=self.app.cad_create(body.get('name'),body.get('parts'))
+            elif path == '/cad/revise':
+                result=self.app.cad_revise(body.get('id'),body.get('parts'),body.get('revision'))
+            elif path == '/cad/get':
+                result=self.app.cad_get(body.get('id'))
+            elif path == '/cad/export':
+                result=self.app.cad_export(body.get('id'))
             elif path == '/cad/primitive':
                 result = self.app.generate_offline_cad(body.get('shape'), body.get('dimensions'))
             elif path == '/actions/request':
