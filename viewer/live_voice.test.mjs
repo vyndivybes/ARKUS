@@ -34,6 +34,31 @@ test('Gemini Live receives actual enabled search capability and omits blocked to
   assert.ok(!enabled.tools[0].functionDeclarations.some(d=>d.name==='run_mcp_readonly'));
 });
 
+test('native Google Search replaces paid Flash search tool but retains approved local tools',()=>{
+  const setup=setupMessage('gemini-3.8-live',[],{web_search:true,native_google_search:true,mcp_readonly:true}).setup;
+  assert.deepEqual(setup.tools[0],{googleSearch:{}});
+  const names=setup.tools[1].functionDeclarations.map(tool=>tool.name);
+  assert.ok(names.includes('remember_note'));
+  assert.ok(names.includes('run_mcp_readonly'));
+  assert.ok(!names.includes('search_web'));
+  assert.match(setup.systemInstruction.parts[0].text,/Native Google Search is ENABLED/);
+  const disabled=setupMessage('gemini-3.8-live',[],{web_search:false,native_google_search:false}).setup;
+  assert.ok(!disabled.tools.some(tool=>'googleSearch' in tool));
+});
+
+test('Live native search extracts only safe actual provider citations without fabricating any',()=>{
+  const found=parseLiveMessage({serverContent:{groundingMetadata:{groundingChunks:[
+    {web:{uri:'https://example.com/news',title:'Example News'}},
+    {web:{uri:'https://example.com/news',title:'Repeated'}},
+    {web:{uri:'javascript:alert(1)',title:'Bad'}},
+    {web:{uri:'https://user:pass@example.com/private',title:'Credentialed'}}
+  ]},outputTranscription:{text:'News summary'},turnComplete:true}});
+  assert.equal(found.type,'content');
+  assert.deepEqual(found.sources,[{url:'https://example.com/news',title:'Example News'}]);
+  assert.equal(found.outputText,'News summary');
+  assert.deepEqual(parseLiveMessage({serverContent:{turnComplete:true}}).sources,[]);
+});
+
 test('microphone PCM resampling, clipping and 24k speaker conversion',()=>{
   const input=new Float32Array([1,-1,0.5,-0.5,0,0]);
   const bytes=floatToPcm16(input,16000);
