@@ -41,7 +41,13 @@ class GeminiAdapter:
                     raise GeminiError("Gemini response was too large.")
                 return json.loads(raw)
         except urllib.error.HTTPError as exc:
-            raise GeminiError(f"Gemini API returned HTTP {exc.code}. Check key, quotas and model availability.") from None
+            # Do not include Google's error body, which may contain private content.
+            reasons={
+                429:"Gemini API quota or rate limit exceeded (HTTP 429). Check AI Studio usage and tier; avoid repeated retries.",
+                403:"Gemini API permission denied (HTTP 403). Check the key and Google project access.",
+                404:"Gemini API model or endpoint not found (HTTP 404). Check the model catalogue and API version.",
+            }
+            raise GeminiError(reasons.get(exc.code,f"Gemini API returned HTTP {exc.code}. Check account permissions and service availability.")) from None
         except (urllib.error.URLError,TimeoutError,ValueError) as exc:
             if isinstance(exc,GeminiError):
                 raise
