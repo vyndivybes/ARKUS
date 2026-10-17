@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from server import App, UserError
+from gemini_adapter import GeminiError
 
 
 class LiveAgentToolTests(unittest.TestCase):
@@ -67,6 +68,13 @@ class LiveAgentToolTests(unittest.TestCase):
         with patch("server.LiveTokenIssuer.create", return_value={"token": "fake-test-token", "model": "gemini-2.5-flash"}):
             result = self.app.live_token()
         self.assertFalse(result["live_capabilities"]["web_search"])
+
+    def test_direct_search_preserves_google_quota_http_429_not_bad_gateway(self):
+        with patch("server.GeminiAdapter.grounded", side_effect=GeminiError(
+                "Gemini API quota exhausted (HTTP 429).")):
+            with self.assertRaises(UserError) as caught:
+                self.app.web_search("What happened in aviation today?")
+        self.assertEqual(caught.exception.status, 429)
 
     def test_mcp_catalog_denied_by_default(self):
         with patch.object(self.app.mcp, "discover") as discover:
