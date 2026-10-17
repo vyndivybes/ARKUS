@@ -41,6 +41,10 @@ class GeminiAdapter:
                     raise GeminiError("Gemini response was too large.")
                 return json.loads(raw)
         except urllib.error.HTTPError as exc:
+            if exc.code == 429:
+                # Do not forward Google response bodies (which could echo private context).
+                raise GeminiError("Gemini API quota/rate limit reached (HTTP 429). "
+                                  "Free-tier Google Search grounding may be unavailable; check project limits.") from None
             raise GeminiError(f"Gemini API returned HTTP {exc.code}. Check key, quotas and model availability.") from None
         except (urllib.error.URLError,TimeoutError,ValueError) as exc:
             if isinstance(exc,GeminiError):
