@@ -61,11 +61,27 @@ class LiveAgentToolTests(unittest.TestCase):
         self.app.config["enable_live_mcp_readonly"] = True
         with patch("server.LiveTokenIssuer.create", return_value={"token": "fake-test-token", "model": "gemini-2.5-flash"}):
             result = self.app.live_token()
-        self.assertEqual(result["live_capabilities"], {"web_search": True, "mcp_readonly": True})
+        self.assertEqual(result["live_capabilities"], {"web_search": True, "native_google_search": False, "mcp_readonly": True})
         self.app.config["enable_google_search"] = False
         self.app._last_live_token_at = 0
         with patch("server.LiveTokenIssuer.create", return_value={"token": "fake-test-token", "model": "gemini-2.5-flash"}):
             result = self.app.live_token()
+        self.assertFalse(result["live_capabilities"]["web_search"])
+
+    def test_native_live_search_capability_uses_live_model_not_flash_model(self):
+        self.app.config["enable_gemini_live"] = True
+        self.app.config["enable_live_web_search"] = True
+        self.app.config["enable_google_search"] = True
+        self.app.config["live_model"] = "gemini-3.8-live"
+        with patch("server.LiveTokenIssuer.create", return_value={"token": "fake-test-token", "model": "gemini-3.8-live"}):
+            result = self.app.live_token()
+        self.assertTrue(result["live_capabilities"]["native_google_search"])
+        self.assertFalse(result["live_capabilities"]["web_search"])
+        self.app.config["enable_live_web_search"] = False
+        self.app._last_live_token_at = 0
+        with patch("server.LiveTokenIssuer.create", return_value={"token": "fake-test-token", "model": "gemini-3.8-live"}):
+            result = self.app.live_token()
+        self.assertFalse(result["live_capabilities"]["native_google_search"])
         self.assertFalse(result["live_capabilities"]["web_search"])
 
     def test_mcp_catalog_denied_by_default(self):

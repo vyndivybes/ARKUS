@@ -856,6 +856,8 @@ liveVoice=createLiveVoice({
     }
     return api('/live/tool',{name,arguments:arguments_,project:liveProject});
   },
+  // Only display source URLs provided by the Live API; never infer citations from audio.
+  onSources:sources=>renderWebReferences(sources),
   onExchange:(user,assistant)=>api('/live/history',{user,assistant,project:liveProject}),
   onToolResult:(name,result)=>{
     if(name==='remember_note'){refreshGraph().catch(error=>toast(error.message));}

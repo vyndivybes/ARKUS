@@ -61,6 +61,16 @@ false until you have configured a local read-only MCP server.
 Examples to say: "Search the web for today's news on aviation." or
 "What local MCP tools can you use? Search my allowed notes tool."
 
+### Free-tier Gemini 3.8 Live native Google Search
+
+For `live_model: "gemini-3.8-live"` (also the documented `gemini-3.1-flash-live-preview`), `enable_google_search: true` and `enable_live_web_search: true` now opt into Google's **native Live `googleSearch` tool**. ARKUS advertises it alongside approved local function tools in the one-use Gemini Live session. The old `search_web` function, which calls standard Flash `generateContent` grounding and may return HTTP 429 on the API Free tier, is **not** advertised in that native Live session. Camera, speech and local approved notes/reminder tools remain separate and permission-scoped.
+
+**Use the LIVE button for public news searches.** Typed chat and `/web/search` still use standard Gemini Flash grounding and are *not* a free-tier substitute; they may return a quota error. Search tools are only enabled for owner-approved Live sessions; no microphone or web search starts on login. Google lists Gemini 3.8 Live's Search grounding as Free-tier supported, subject to actual project rate limits; a paid-tier account may still incur charges. No billing settings or credentials are changed by this feature.
+
+Google's Live API defines `serverContent.groundingMetadata` for returned sources. ARKUS shows up to six distinct HTTPS references **only if Google supplies them** and attaches them to the corresponding completed spoken answer. Gemini 3.x Live may sometimes omit grounding metadata even after a search; **no links are invented**. A successful search without provider citations must not be described as source-verified.
+
+References: https://ai.google.dev/gemini-api/docs/live-api/tools ; https://ai.google.dev/api/live ; https://ai.google.dev/gemini-api/docs/pricing
+
 ## Simultaneous Ollama chat + Gemini Live, vision and Search
 
 ARKUS can use a **local Ollama chat model** while separately using **Gemini** for

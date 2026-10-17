@@ -36,6 +36,19 @@ class GeminiAdapterTests(unittest.TestCase):
             send.return_value.__enter__.return_value.read.return_value=b'{"candidates":[]}'
             with self.assertRaises(GeminiError):
                 a.complete("gemini-2.5-flash",[{"role":"user","content":"hello"}])
+    def test_quota_and_permission_errors_have_actionable_safe_messages(self):
+        from urllib.error import HTTPError
+        import io
+        adapter=GeminiAdapter("private-local-test")
+        for status, expected in ((429,"quota or rate limit"),(403,"permission"),(404,"model or endpoint")):
+            with self.subTest(status=status):
+                error=HTTPError("https://generativelanguage.googleapis.com/v1beta/models",status,"error",{},io.BytesIO(b"private-error-body"))
+                with patch("gemini_adapter.urllib.request.urlopen",side_effect=error):
+                    with self.assertRaises(GeminiError) as raised:
+                        adapter.models()
+                self.assertIn(expected,str(raised.exception))
+                self.assertNotIn("private-error-body",str(raised.exception))
+
     def test_model_list_filters_non_generation_models(self):
         a=GeminiAdapter("abc")
         with patch("gemini_adapter.urllib.request.urlopen") as send:
