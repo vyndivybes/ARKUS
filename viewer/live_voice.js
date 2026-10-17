@@ -194,7 +194,7 @@ export function createLiveVoice({getToken,getCameraFrame=()=>null,callTool=async
     onExchange=async()=>{},onToolResult=()=>{},onSources=()=>{},onState=()=>{},onTranscript=()=>{},onError=()=>{},connectTimeoutMs=30000}){
   let ws=null,stream=null, micContext=null,micNode=null,micSource=null,outputContext=null,nextTime=0,playing=new Set();
   let pending=false,ready=false,session=0,finalInput='',finalOutput='',videoTimer=null,cameraAnnounced=false,connectTimer=null;
-  const completedCalls=new Set(),cancelledCalls=new Set(),reportedSources=new Set();
+  const completedCalls=new Set(),cancelledCalls=new Set(),reportedSources=new Set(),turnSources=[];
 
   const update=value=>onState(value);
   function silence(){
@@ -308,7 +308,7 @@ export function createLiveVoice({getToken,getCameraFrame=()=>null,callTool=async
   async function start(){
     if(pending||ws) return;
     const current=++session;
-    pending=true;ready=false;finalInput='';finalOutput='';completedCalls.clear();cancelledCalls.clear();reportedSources.clear();
+    pending=true;ready=false;finalInput='';finalOutput='';completedCalls.clear();cancelledCalls.clear();reportedSources.clear();turnSources.length=0;
     update('Requesting microphone…');
     try{
       // Media consent before issuing a one-use token avoids consuming unused tokens.
@@ -348,11 +348,14 @@ export function createLiveVoice({getToken,getCameraFrame=()=>null,callTool=async
           if(content.type==='reconnect_required'){onError('Live session limit reached; reconnect if needed.');stop();return;}
           if(content.type!=='content')return;
           if(content.sources?.length){
-            const fresh=content.sources.filter(source=>!reportedSources.has(source.url));
-            for(const source of fresh)reportedSources.add(source.url);
-            if(fresh.length)onSources(fresh);
+            for(const source of content.sources){
+              if(!reportedSources.has(source.url)){reportedSources.add(source.url);turnSources.push(source);}
+            }
           }
-          if(content.interrupted){silence();finalOutput='';update('Listening · interruption received');}
+          if(content.interrupted){
+            silence();finalOutput='';reportedSources.clear();turnSources.length=0;
+            update('Listening · interruption received');
+          }
           if(content.inputText)finalInput=mergeLiveTranscription(finalInput,content.inputText);
           if(content.outputText)finalOutput=mergeLiveTranscription(finalOutput,content.outputText);
           for(const packet of content.audio)playChunk(packet);
@@ -361,6 +364,9 @@ export function createLiveVoice({getToken,getCameraFrame=()=>null,callTool=async
             finalInput='';finalOutput='';
             if(user)onTranscript(user,'user');
             if(assistant)onTranscript(assistant,'assistant');
+            if(turnSources.length && assistant)onSources(turnSources.splice(0));
+            else turnSources.length=0; // Never attach a new source link to an earlier message.
+            reportedSources.clear();
             if(user&&assistant){
               try{await onExchange(user,assistant);}
               catch{if(session===current)onError('Speech history could not be saved.');}
