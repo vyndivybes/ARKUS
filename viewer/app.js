@@ -832,6 +832,15 @@ liveVoice=createLiveVoice({
   getToken:()=>{liveProject=document.body.dataset.project;return api('/live/token',{project:liveProject});},
   getCameraFrame:()=>cameraStream && $('cameraLiveConsent').checked ? frame($('cameraPreview'),640) : null,
   callTool:async(name,arguments_)=>{
+    if(name==='search_web'){
+      const query=arguments_?.query;
+      if(typeof query!=='string'||query.trim().length<2||query.length>500)
+        throw new Error('A short public web search question is required.');
+      if(!window.confirm('Allow ARKUS to search Google for this PUBLIC question?\n\n'+query+'\n\nThe query leaves this device. Google Gemini usage may incur charges.')){
+        throw new Error('Web search declined. No question was sent.');
+      }
+      return api('/live/tool',{name:'search_web',arguments:{query:query.trim(),approved:true},project:liveProject});
+    }
     if(name==='list_project_files')return api('/workspace/files',{project:liveProject});
     if(name==='read_project_file')return api('/workspace/read',{name:arguments_.name,project:liveProject});
     if(name==='write_project_file'){
@@ -852,6 +861,7 @@ liveVoice=createLiveVoice({
   onToolResult:(name,result)=>{
     if(name==='remember_note'){refreshGraph().catch(error=>toast(error.message));}
     if(name==='set_reminder'){refreshWorkflows(false).catch(error=>toast(error.message));}
+    if(name==='search_web'&&result?.sources)renderWebReferences(result.sources);
     if(result?.error)toast(result.error);
   },
   onState:value=>{
