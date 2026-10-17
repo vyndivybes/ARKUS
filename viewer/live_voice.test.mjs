@@ -120,10 +120,11 @@ test('consented Live session connects, streams PCM and stops all microphone trac
     globalThis.WebSocket=FakeSocket;
     Object.defineProperty(globalThis,'navigator',{configurable:true,value:{mediaDevices:{getUserMedia:async(opts)=>{
       assert.equal(opts.audio.echoCancellation,true);requested++;return {getTracks:()=>tracks};}}}});
-    const states=[];
+    const states=[],transcripts=[],citations=[];
     const live=createLiveVoice({getToken:async()=>({token:'auth_tokens/temporary123',model:'gemini-3.1-flash-live-preview'}),
                                 getCameraFrame:()=>videoConsented?'data:image/jpeg;base64,/9j/4AAQ':null,
-                                onState:x=>states.push(x)});
+                                onState:x=>states.push(x),onTranscript:(value,role)=>transcripts.push({value,role}),
+                                onSources:items=>citations.push(...items)});
     await live.start();
     assert.equal(requested,1);
     assert.equal(live.connecting,true);
@@ -142,6 +143,11 @@ test('consented Live session connects, streams PCM and stops all microphone trac
     assert.equal(live.sendVideoFrame(),true);
     assert.equal(socket.sent.filter(p=>p.clientContent).length,1);
     assert.ok(!JSON.stringify(socket.sent).includes('temporary123'));
+    await socket.onmessage({data:JSON.stringify({serverContent:{groundingMetadata:{groundingChunks:[{web:{uri:'https://news.example/story',title:'A story'}}]}}})});
+    assert.deepEqual(citations,[],'Source links should not attach to the previous chat message');
+    await socket.onmessage({data:JSON.stringify({serverContent:{inputTranscription:{text:'Tell me the news'},outputTranscription:{text:'Here is news'},turnComplete:true}})});
+    assert.deepEqual(transcripts.map(x=>x.role),['user','assistant']);
+    assert.deepEqual(citations,[{url:'https://news.example/story',title:'A story'}]);
     live.stop();
     assert.equal(tracks[0].stopped,true);
     assert.equal(socket.closed,true);
