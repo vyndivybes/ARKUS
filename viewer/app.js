@@ -857,7 +857,12 @@ liveVoice=createLiveVoice({
     return api('/live/tool',{name,arguments:arguments_,project:liveProject});
   },
   onExchange:(user,assistant)=>api('/live/history',{user,assistant,project:liveProject}),
-  onGrounding:sources=>renderWebReferences(sources),
+  onGrounding:sources=>{
+    // Metadata can arrive before or after spoken transcript packets.
+    // Put citations in their own assistant card, never onto a user's message.
+    addMessage('Google Search sources received:', 'assistant');
+    renderWebReferences(sources);
+  },
   onToolResult:(name,result)=>{
     if(name==='remember_note'){refreshGraph().catch(error=>toast(error.message));}
     if(name==='set_reminder'){refreshWorkflows(false).catch(error=>toast(error.message));}
