@@ -2,6 +2,8 @@
 import unittest
 from unittest.mock import patch
 import json
+import io
+from urllib.error import HTTPError
 from gemini_adapter import GeminiAdapter, GeminiError
 
 class GeminiAdapterTests(unittest.TestCase):
@@ -36,6 +38,18 @@ class GeminiAdapterTests(unittest.TestCase):
             send.return_value.__enter__.return_value.read.return_value=b'{"candidates":[]}'
             with self.assertRaises(GeminiError):
                 a.complete("gemini-2.5-flash",[{"role":"user","content":"hello"}])
+    def test_search_quota_reports_http_429_without_echoing_google_response(self):
+        a = GeminiAdapter("private-local-test")
+        with patch("gemini_adapter.urllib.request.urlopen", side_effect=HTTPError(
+                "https://generativelanguage.googleapis.com/v1beta/models", 429,
+                "DO_NOT_SHOW_PROVIDER_SECRET", {}, io.BytesIO(b'PRIVATE_ERROR_BODY'))):
+            with self.assertRaises(GeminiError) as caught:
+                a.grounded("gemini-3.8-flash", "Recent aviation updates")
+        self.assertIn("HTTP 429", str(caught.exception))
+        self.assertIn("quota", str(caught.exception).lower())
+        self.assertNotIn("DO_NOT_SHOW", str(caught.exception))
+        self.assertNotIn("PRIVATE_ERROR_BODY", str(caught.exception))
+
     def test_model_list_filters_non_generation_models(self):
         a=GeminiAdapter("abc")
         with patch("gemini_adapter.urllib.request.urlopen") as send:
