@@ -836,10 +836,9 @@ liveVoice=createLiveVoice({
       const query=arguments_?.query;
       if(typeof query!=='string'||query.trim().length<2||query.length>500)
         throw new Error('A short public web search question is required.');
-      if(!window.confirm('Allow ARKUS to search Google for this PUBLIC question?\n\n'+query+'\n\nThe query leaves this device. Google Gemini usage may incur charges.')){
-        throw new Error('Web search declined. No question was sent.');
-      }
-      return api('/live/tool',{name:'search_web',arguments:{query:query.trim(),approved:true},project:liveProject});
+      // Owner permission is stored in private config; no per-question popup.
+      // Backend still enforces enabled Live search and the Gemini cost policy.
+      return api('/live/tool',{name:'search_web',arguments:{query:query.trim()},project:liveProject});
     }
     if(name==='list_project_files')return api('/workspace/files',{project:liveProject});
     if(name==='read_project_file')return api('/workspace/read',{name:arguments_.name,project:liveProject});
