@@ -501,7 +501,11 @@ class App:
         if self.config.get("allow_paid_models") is not True:
             raise UserError("Google Search may incur charges. Explicit cost permission is required.",409)
         try:return GeminiAdapter(key).grounded(model,question)
-        except GeminiError as exc:raise UserError(str(exc),502) from None
+        except GeminiError as exc:
+            # Preserve the provider quota code. HTTP 502 obscures free-tier
+            # search restrictions and encourages repeated, ineffective retries.
+            status = 429 if 'HTTP 429' in str(exc) else 502
+            raise UserError(str(exc),status) from None
     def mcp_servers(self):
         return {"servers":self.mcp.names()}
     def mcp_discover(self,name):
