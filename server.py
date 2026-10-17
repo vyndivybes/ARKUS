@@ -240,7 +240,12 @@ class App:
                     for item in history[-8:]
                 ]
                 return {**result, "project":self.projects.active,
-                        "recent_history":recent}
+                        "recent_history":recent,
+                        "live_capabilities":{
+                            "web_search":(self.config.get("enable_google_search") is True
+                                          and self.config.get("enable_live_web_search") is True
+                                          and self.config.get("allow_paid_models") is True),
+                            "mcp_readonly":self.config.get("enable_live_mcp_readonly") is True}}
             except LiveTokenError as exc:
                 raise UserError(str(exc),502) from None
 
