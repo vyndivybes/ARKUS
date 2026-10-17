@@ -189,7 +189,7 @@ test('camera is never sent before opt-in and stops with the live session', async
 test('Live model tool call uses the local gateway and returns matched function response',async()=>{
   const saved={AudioContext:globalThis.AudioContext,AudioWorkletNode:globalThis.AudioWorkletNode,
       WebSocket:globalThis.WebSocket,navigator:globalThis.navigator};
-  let socket,requests=[],exchanges=[];
+  let socket,requests=[],exchanges=[],groundings=[];
   class FakeAudio {
     constructor(){this.sampleRate=48000;this.destination={};this.audioWorklet={addModule:async()=>{}};}
     resume(){return Promise.resolve()} close(){return Promise.resolve()}
@@ -208,12 +208,17 @@ test('Live model tool call uses the local gateway and returns matched function r
     const voice=createLiveVoice({
       getToken:async()=>({token:'auth_tokens/for-test-123',model:'gemini-3.1-flash-live-preview',recent_history:[{role:'user',content:'Continue my carbon frame discussion.'}]}),
       callTool:async(name,args)=>{requests.push([name,args]);return {answer:'Reminded'};},
-      onExchange:async(a,b)=>{exchanges.push([a,b])}
+      onExchange:async(a,b)=>{exchanges.push([a,b])},
+      onGrounding:sources=>groundings.push(sources)
     });
     await voice.start();socket.onopen();
     assert.match(socket.sent[0].setup.systemInstruction.parts[0].text,/Continue my carbon frame discussion/);
     await socket.onmessage({data:JSON.stringify({setupComplete:{}})});
     assert.equal(voice.active,true);
+    for(let i=0;i<2;i++)await socket.onmessage({data:JSON.stringify({serverContent:{groundingMetadata:{
+      groundingChunks:[{web:{uri:'https://aviation.example.org/report',title:'Verified aviation source'}}]
+    }}})});
+    assert.deepEqual(groundings,[[{url:'https://aviation.example.org/report',title:'Verified aviation source'}]]);
     await socket.onmessage({data:JSON.stringify({toolCall:{functionCalls:[
       {id:'call-1',name:'set_reminder',args:{when:'2030-01-02T15:30',message:'Alpha'}}
     ]}})});
