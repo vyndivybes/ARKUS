@@ -24,6 +24,43 @@ Try:
 
 Offline mode extracts matching note text; it is **not an LLM**. Generated conversation and image understanding require a configured model. Source references identify retrieved supporting notes; they do not prove a model's interpretation is correct.
 
+## Gemini-first autonomous Live Search and local MCP (Stage 5)
+
+Ollama is optional. With Gemini configured as the primary provider, ARKUS can
+perform public internet research in the middle of a spoken conversation without
+asking for permission on every query. Set these values in **private** local
+`config.json` after deciding whether to allow Google billable API usage:
+
+```json
+{
+  "provider": "gemini",
+  "model": "gemini-2.5-flash",
+  "enable_google_search": true,
+  "enable_live_web_search": true,
+  "enable_gemini_live": true,
+  "allow_paid_models": true,
+  "enable_live_mcp_readonly": true
+}
+```
+
+`enable_live_web_search` enables background public searches **only during an
+explicitly started Gemini Live session**. Never speak private credentials into a
+public search request. Google model availability, quotas and pricing depend on
+the account; the actual Gemini Live model must be verified separately. ARKUS
+returns grounded sources and does not fabricate web results on failure.
+
+`enable_live_mcp_readonly` allows the voice assistant to discover and invoke
+**already configured** local MCP servers and owner-allowlisted tools that the
+server advertises as `readOnlyHint: true`. These calls do not need separate
+popups while Live is active. It does not authorize write tools, remote MCP,
+shell execution, or implicit installation of new servers. An MCP server is a
+trusted local integration: its own `readOnlyHint` declarations must be verified
+before you enable it. MCP output is treated as untrusted data. Leave the flag
+false until you have configured a local read-only MCP server.
+
+Examples to say: "Search the web for today's news on aviation." or
+"What local MCP tools can you use? Search my allowed notes tool."
+
 ## Simultaneous Ollama chat + Gemini Live, vision and Search
 
 ARKUS can use a **local Ollama chat model** while separately using **Gemini** for

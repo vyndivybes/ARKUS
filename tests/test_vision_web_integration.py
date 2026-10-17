@@ -60,24 +60,29 @@ class GeminiVisionWebTests(unittest.TestCase):
                                   "image": value})
             image.assert_not_called()
 
-    def test_web_lookup_from_live_requires_every_request_to_be_approved(self):
+    def test_web_lookup_from_live_requires_owner_optin_not_model_approval(self):
         with patch.object(self.app, "web_search", return_value={
             "answer": "Source confirms it.", "sources": [{"url": "https://example.org", "title": "Source"}],
             "kind": "web", "grounded": True
         }) as search:
-            for payload in ({"query": "latest release"}, {"query": "latest release", "approved": False},
+            with self.assertRaises(UserError):
+                self.app.live_tool("search_web", {"query": "latest release"})
+            search.assert_not_called()
+            self.app.config["enable_live_web_search"] = True
+            for payload in ({"query": "latest release", "approved": False},
+                            {"query": "latest release", "approved": True},
                             {"query": "latest release", "approved": "yes"}):
                 with self.assertRaises(UserError):
                     self.app.live_tool("search_web", payload)
-            search.assert_not_called()
-            result = self.app.live_tool("search_web", {"query": "latest release", "approved": True})
+            result = self.app.live_tool("search_web", {"query": "latest release"})
             self.assertEqual(result["sources"][0]["url"], "https://example.org")
             search.assert_called_once_with("latest release")
 
     def test_voice_web_lookup_respects_disabled_search_configuration(self):
+        self.app.config["enable_live_web_search"] = True
         self.app.config["enable_google_search"] = False
         with self.assertRaisesRegex(UserError, "disabled"):
-            self.app.live_tool("search_web", {"query": "latest release", "approved": True})
+            self.app.live_tool("search_web", {"query": "latest release"})
 
     def test_internet_chat_understands_google_request(self):
         with patch.object(self.app, "web_search", return_value={

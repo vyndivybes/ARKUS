@@ -632,15 +632,64 @@ class App:
 
     @project_scoped
     def live_tool(self, name, arguments):
-        """Narrowly scoped Live operations; public search requires separate per-call approval."""
+        """Owner-approved Live tools; MCP actions must be explicitly allowlisted read-only."""
         if name == "search_web":
-            if (type(arguments) is not dict or set(arguments) != {"query", "approved"}
-                    or arguments["approved"] is not True or type(arguments["query"]) is not str):
-                raise UserError("Explicit approval and a public search query are required.", 403)
+            if self.config.get("enable_live_web_search") is not True:
+                raise UserError("Enable Live public web search in your private ARKUS configuration.", 403)
+            if (type(arguments) is not dict or set(arguments) != {"query"}
+                    or type(arguments["query"]) is not str):
+                raise UserError("Provide only a public web search query.", 403)
             query = arguments["query"].strip()
             if not 2 <= len(query) <= 500:
                 raise UserError("Ask a short public web search question.")
             return self.web_search(query)
+        if name in ("list_mcp_tools", "run_mcp_readonly"):
+            if self.config.get("enable_live_mcp_readonly") is not True:
+                raise UserError("Live MCP requires explicit owner enablement.", 403)
+            if name == "list_mcp_tools":
+                if type(arguments) is not dict or arguments:
+                    raise UserError("List MCP tools takes no arguments.")
+                available = []
+                for server in self.mcp.names():
+                    if not server["enabled"] or not server["allow_tools"]:
+                        continue
+                    try:
+                        discovered = self.mcp.discover(server["name"])
+                    except MCPError:
+                        continue
+                    tools = [{"name": t["name"], "description": str(t.get("description", ""))[:250]}
+                             for t in discovered[:20]
+                             if t.get("name") in server["allow_tools"]]
+                    if tools:
+                        available.append({"name": server["name"], "tools": tools})
+                return {"servers": available}
+            if (type(arguments) is not dict
+                    or set(arguments) != {"server", "tool", "arguments_json"}
+                    or any(type(arguments[k]) is not str for k in arguments)):
+                raise UserError("Specify server, tool and JSON arguments.", 403)
+            server_name, tool_name = arguments["server"], arguments["tool"]
+            allowed = next((s for s in self.mcp.names() if s["name"] == server_name
+                            and s["enabled"] and tool_name in s["allow_tools"]), None)
+            if allowed is None:
+                raise UserError("Live MCP tool is not configured and allowlisted.", 403)
+            raw_args = arguments["arguments_json"]
+            if not 1 <= len(raw_args) <= 6000:
+                raise UserError("MCP arguments are empty or oversized.")
+            try:
+                payload = json.loads(raw_args)
+                if type(payload) is not dict:
+                    raise ValueError()
+                json.dumps(payload, allow_nan=False)
+                result = self.mcp.call(server_name, tool_name, payload, approved=True)
+            except (ValueError, TypeError, MCPError):
+                raise UserError("Invalid or unavailable read-only MCP tool request.", 409) from None
+            # Bound untrusted MCP content before passing it into Gemini Live context.
+            content = result.get("content", [])
+            bounded = []
+            for item in content[:5]:
+                if isinstance(item, dict) and item.get("type") == "text":
+                    bounded.append({"type": "text", "text": str(item.get("text", ""))[:1800]})
+            return {"content": bounded, "isError": result.get("isError") is True}
         expected = {
             "get_briefing": set(),
             "search_knowledge": {"query"},
