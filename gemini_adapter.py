@@ -4,6 +4,8 @@ The key stays in an HTTP header and local ARKUS configuration. No third-party
 SDK is required; billable calls are gated separately by the application's
 provider-cost policy.
 """
+import base64
+import binascii
 import json
 import re
 import urllib.error
@@ -115,16 +117,43 @@ class GeminiAdapter:
         except (ValueError,TypeError,KeyError,IndexError):
             raise GeminiError("Google Search returned no usable grounded answer.") from None
 
+    @staticmethod
+    def _answer(response):
+        try:
+            parts = response["candidates"][0]["content"]["parts"]
+            answer = "".join(part["text"] for part in parts
+                             if isinstance(part, dict) and isinstance(part.get("text"), str))
+            if not answer.strip():
+                raise ValueError()
+            return answer.strip()
+        except (ValueError, TypeError, KeyError, IndexError):
+            raise GeminiError("Gemini returned no usable text response.") from None
+
+    def describe_image(self, model, system, question, jpeg_base64):
+        """Send a user-approved JPEG as Gemini inline_data, not a text-only prompt."""
+        if not isinstance(model, str) or not re.fullmatch(r"[A-Za-z0-9_.-]{3,100}", model):
+            raise GeminiError("Invalid vision model name.")
+        if not isinstance(jpeg_base64, str) or len(jpeg_base64) > 2_800_000:
+            raise GeminiError("Invalid or oversized JPEG.")
+        try:
+            image = base64.b64decode(jpeg_base64, validate=True)
+        except (ValueError, binascii.Error):
+            raise GeminiError("Invalid JPEG encoding.") from None
+        if not image.startswith(b"\xff\xd8\xff") or not image.endswith(b"\xff\xd9") or len(image) > 2_000_000:
+            raise GeminiError("Invalid or oversized JPEG.")
+        payload = self.format_request([
+            {"role": "system", "content": system},
+            {"role": "user", "content": question}
+        ])
+        payload["contents"][0]["parts"].append({
+            "inline_data": {"mime_type": "image/jpeg", "data": jpeg_base64}
+        })
+        response = self._request("/models/" + urllib.parse.quote(model, safe="") + ":generateContent", payload)
+        return self._answer(response)
+
     def complete(self,model,messages):
         if not isinstance(model,str) or not re.fullmatch(r"[A-Za-z0-9_.-]{3,100}",model):
             raise GeminiError("Invalid model name.")
         response=self._request("/models/"+urllib.parse.quote(model,safe="")+":generateContent",
                                self.format_request(messages))
-        try:
-            content=response["candidates"][0]["content"]["parts"]
-            answer="".join(part["text"] for part in content if isinstance(part,dict) and isinstance(part.get("text"),str))
-            if not answer.strip():
-                raise ValueError()
-            return answer.strip()
-        except (ValueError,TypeError,KeyError,IndexError):
-            raise GeminiError("Gemini returned no usable text response.") from None
+        return self._answer(response)
