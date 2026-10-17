@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from server import App, UserError
+from gemini_adapter import GeminiError
 
 
 class LiveAgentToolTests(unittest.TestCase):
@@ -83,6 +84,14 @@ class LiveAgentToolTests(unittest.TestCase):
             result = self.app.live_token()
         self.assertFalse(result["live_capabilities"]["native_google_search"])
         self.assertFalse(result["live_capabilities"]["web_search"])
+
+    def test_quota_error_from_standard_search_is_http_429_not_502(self):
+        with patch("server.GeminiAdapter.grounded",side_effect=GeminiError(
+                "Gemini API quota or rate limit exceeded (HTTP 429).")):
+            with self.assertRaises(UserError) as exc:
+                self.app.web_search("Recent aviation news")
+        self.assertEqual(exc.exception.status,429)
+        self.assertIn("HTTP 429",str(exc.exception))
 
     def test_mcp_catalog_denied_by_default(self):
         with patch.object(self.app.mcp, "discover") as discover:
