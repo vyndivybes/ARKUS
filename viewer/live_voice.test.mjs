@@ -13,10 +13,12 @@ test('setup binds exact model and speech-only modalities with no executable tool
   assert.equal(setup.realtimeInputConfig.automaticActivityDetection.silenceDurationMs,900);
   assert.deepEqual(setup.generationConfig.responseModalities,['AUDIO']);
   assert.deepEqual(setup.tools[0].functionDeclarations.map(d=>d.name),[
-    'get_briefing','search_knowledge','search_web','remember_note','set_reminder',
+    'get_briefing','search_knowledge','remember_note','set_reminder',
     'list_project_files','read_project_file','write_project_file',
     'list_mcp_tools','run_mcp_readonly'
   ]);
+  assert.deepEqual(setup.tools[1],{googleSearch:{}});
+  assert.ok(!JSON.stringify(setup.tools).includes('search_web'));
   assert.ok(!JSON.stringify(setup.tools).includes('run_shell'));
   assert.match(JSON.stringify(setup.tools),/owner has enabled Live web search/);
   assert.match(setup.systemInstruction.parts[0].text,/untrusted data/);
@@ -26,12 +28,30 @@ test('Gemini Live receives actual enabled search capability and omits blocked to
   const disabled=setupMessage('gemini-3.1-flash-live-preview').setup;
   const disabledNames=disabled.tools[0].functionDeclarations.map(d=>d.name);
   assert.ok(!disabledNames.includes('search_web'));
+  assert.ok(!disabled.tools.some(t=>Object.hasOwn(t,'googleSearch')));
   assert.ok(!disabledNames.includes('run_mcp_readonly'));
   assert.match(disabled.systemInstruction.parts[0].text,/Live public web search is DISABLED/);
   const enabled=setupMessage('gemini-3.1-flash-live-preview',[],{web_search:true,mcp_readonly:false}).setup;
-  assert.ok(enabled.tools[0].functionDeclarations.some(d=>d.name==='search_web'));
+  assert.ok(!enabled.tools[0].functionDeclarations.some(d=>d.name==='search_web'));
+  assert.ok(enabled.tools.some(t=>Object.hasOwn(t,'googleSearch')));
   assert.match(enabled.systemInstruction.parts[0].text,/Live public web search is ENABLED/);
   assert.ok(!enabled.tools[0].functionDeclarations.some(d=>d.name==='run_mcp_readonly'));
+});
+
+test('Live native grounding returns bounded real HTTPS source links without inventing citations',()=>{
+  const parsed=parseLiveMessage({serverContent:{groundingMetadata:{groundingChunks:[
+    {web:{uri:'https://example.org/aviation',title:'Aviation update'}},
+    {web:{uri:'https://example.org/aviation',title:'Duplicate'}},
+    {web:{uri:'javascript:alert(1)',title:'Unsafe'}},
+    {web:{uri:'http://untrusted.example',title:'Insecure'}},
+    {retrievedContext:{uri:'https://private.test',title:'Private'}}
+  ]},turnComplete:false}});
+  assert.equal(parsed.type,'content');
+  assert.deepEqual(parsed.sources,[{url:'https://example.org/aviation',title:'Aviation update'}]);
+  assert.equal(parsed.grounded,true);
+  const missing=parseLiveMessage({serverContent:{outputTranscription:{text:'Some plausible news'},turnComplete:true}});
+  assert.deepEqual(missing.sources,[]);
+  assert.equal(missing.grounded,false);
 });
 
 test('microphone PCM resampling, clipping and 24k speaker conversion',()=>{
