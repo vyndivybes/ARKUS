@@ -8,7 +8,7 @@ test('only constrained Live WebSocket endpoint receives the ephemeral token',()=
   assert.throws(()=>liveUrl('a'));
 });
 test('setup binds exact model and speech-only modalities with no executable tools',()=>{
-  const setup=setupMessage('gemini-3.1-flash-live-preview').setup;
+  const setup=setupMessage('gemini-3.1-flash-live-preview',[],{web_search:true,mcp_readonly:true}).setup;
   assert.equal(setup.model,'models/gemini-3.1-flash-live-preview');
   assert.equal(setup.realtimeInputConfig.automaticActivityDetection.silenceDurationMs,900);
   assert.deepEqual(setup.generationConfig.responseModalities,['AUDIO']);
@@ -22,6 +22,18 @@ test('setup binds exact model and speech-only modalities with no executable tool
   assert.match(setup.systemInstruction.parts[0].text,/untrusted data/);
   assert.throws(()=>setupMessage('../wrong-model'));
 });
+test('Gemini Live receives actual enabled search capability and omits blocked tools',()=>{
+  const disabled=setupMessage('gemini-3.1-flash-live-preview').setup;
+  const disabledNames=disabled.tools[0].functionDeclarations.map(d=>d.name);
+  assert.ok(!disabledNames.includes('search_web'));
+  assert.ok(!disabledNames.includes('run_mcp_readonly'));
+  assert.match(disabled.systemInstruction.parts[0].text,/Live public web search is DISABLED/);
+  const enabled=setupMessage('gemini-3.1-flash-live-preview',[],{web_search:true,mcp_readonly:false}).setup;
+  assert.ok(enabled.tools[0].functionDeclarations.some(d=>d.name==='search_web'));
+  assert.match(enabled.systemInstruction.parts[0].text,/Live public web search is ENABLED/);
+  assert.ok(!enabled.tools[0].functionDeclarations.some(d=>d.name==='run_mcp_readonly'));
+});
+
 test('microphone PCM resampling, clipping and 24k speaker conversion',()=>{
   const input=new Float32Array([1,-1,0.5,-0.5,0,0]);
   const bytes=floatToPcm16(input,16000);
