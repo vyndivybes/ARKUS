@@ -24,6 +24,42 @@ Try:
 
 Offline mode extracts matching note text; it is **not an LLM**. Generated conversation and image understanding require a configured model. Source references identify retrieved supporting notes; they do not prove a model's interpretation is correct.
 
+## Simultaneous Ollama chat + Gemini Live, vision and Search
+
+ARKUS can use a **local Ollama chat model** while separately using **Gemini** for
+live voice, explicitly shared camera frames and opt-in Google Search grounding.
+The services do not need to share a primary `provider` value or API key.
+For example, in your private local `config.json`:
+
+```json
+{
+  "provider": "ollama",
+  "model": "YOUR_INSTALLED_OLLAMA_MODEL",
+  "api_key": "",
+  "gemini_api_key": "YOUR_PRIVATE_GEMINI_KEY",
+  "gemini_model": "gemini-2.5-flash",
+  "vision_provider": "gemini",
+  "enable_google_search": true,
+  "enable_gemini_live": true,
+  "live_model": "YOUR_VERIFIED_GEMINI_LIVE_MODEL",
+  "allow_paid_models": true,
+  "mcp_servers": []
+}
+```
+
+`ARKUS_GEMINI_API_KEY` (local Windows environment variable) can supply the
+secondary Gemini credential without putting it in a config file. Do not commit
+real keys to GitHub. The primary `ARKUS_API_KEY` remains independent.
+Run Ollama on loopback `127.0.0.1:11434` and pull an appropriately sized
+model using Ollama before selecting it in ARKUS.
+
+The configuration does **not** assert that the selected Gemini Live model or
+Ollama model exists, or that any provider operation is free. Actual model
+availability, live microphone/camera acceptance, usage quotas and network
+access must be checked on the Windows machine. Search, Gemini Live and cloud
+vision still require cost opt-in. MCP endpoints remain separately configured
+and approved; this change does not enable arbitrary command execution.
+
 ## Conversational model fallback and optional current-information search
 
 When a configured and verified language model is accessible, ARKUS now gives **general conversational answers** to questions not covered by local notes. General answers are labeled `kind=general` and have no fabricated note or web citations; they are model responses, not verified live facts. The entirely free offline mode continues to search local project notes and honestly reports missing evidence.

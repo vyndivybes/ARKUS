@@ -883,7 +883,7 @@ $('liveMic').addEventListener('click',async()=>{
   try{
     const configured=await api('/api/status');
     if(!configured.live_available){
-      toast('Set provider=gemini, enable_gemini_live=true and allow_paid_models=true in private ARKUS config. Gemini Live may incur charges.');return;
+      toast('Configure a Gemini API key (primary or gemini_api_key), enable_gemini_live=true and allow_paid_models=true in private ARKUS config. Gemini Live may incur charges.');return;
     }
     stopListening();stopSpeech();interacted=true;
     await liveVoice.start();

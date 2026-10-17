@@ -9,5 +9,9 @@
   "enable_gemini_live": false,
   "allow_unconstrained_live_token": false,
   "mcp_servers": [],
-  "enable_smart_home": false
+  "enable_smart_home": false,
+  "gemini_api_key": "",
+  "gemini_model": "gemini-2.5-flash",
+  "vision_provider": "primary",
+  "live_model": "gemini-2.5-flash-native-audio-preview"
 }
