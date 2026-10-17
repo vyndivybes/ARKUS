@@ -68,6 +68,22 @@ class LiveAgentToolTests(unittest.TestCase):
             result = self.app.live_token()
         self.assertFalse(result["live_capabilities"]["web_search"])
 
+    def test_native_live_search_capability_uses_live_model_not_flash_model(self):
+        self.app.config["enable_gemini_live"] = True
+        self.app.config["enable_live_web_search"] = True
+        self.app.config["enable_google_search"] = True
+        self.app.config["live_model"] = "gemini-3.8-live"
+        with patch("server.LiveTokenIssuer.create", return_value={"token": "fake-test-token", "model": "gemini-3.8-live"}):
+            result = self.app.live_token()
+        self.assertTrue(result["live_capabilities"]["native_google_search"])
+        self.assertFalse(result["live_capabilities"]["web_search"])
+        self.app.config["enable_live_web_search"] = False
+        self.app._last_live_token_at = 0
+        with patch("server.LiveTokenIssuer.create", return_value={"token": "fake-test-token", "model": "gemini-3.8-live"}):
+            result = self.app.live_token()
+        self.assertFalse(result["live_capabilities"]["native_google_search"])
+        self.assertFalse(result["live_capabilities"]["web_search"])
+
     def test_mcp_catalog_denied_by_default(self):
         with patch.object(self.app.mcp, "discover") as discover:
             with self.assertRaises(UserError):
