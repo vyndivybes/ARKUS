@@ -239,12 +239,20 @@ class App:
                     {"role": item["role"], "content": item["content"][:300]}
                     for item in history[-8:]
                 ]
+                # Native Google Search executes inside Gemini Live; unlike Flash
+                # generateContent grounding, it is supported on the Live free tier.
+                # Only the live models documented to support it may advertise it.
+                issued_model=result.get("model",model)
+                search_enabled=(self.config.get("enable_google_search") is True
+                                and self.config.get("enable_live_web_search") is True
+                                and self.config.get("allow_paid_models") is True)
+                native_search=(search_enabled and issued_model in (
+                    "gemini-3.8-live", "gemini-3.1-flash-live-preview"))
                 return {**result, "project":self.projects.active,
                         "recent_history":recent,
                         "live_capabilities":{
-                            "web_search":(self.config.get("enable_google_search") is True
-                                          and self.config.get("enable_live_web_search") is True
-                                          and self.config.get("allow_paid_models") is True),
+                            "web_search":search_enabled and not native_search,
+                            "native_google_search":native_search,
                             "mcp_readonly":self.config.get("enable_live_mcp_readonly") is True}}
             except LiveTokenError as exc:
                 raise UserError(str(exc),502) from None
