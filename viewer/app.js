@@ -857,6 +857,7 @@ liveVoice=createLiveVoice({
     return api('/live/tool',{name,arguments:arguments_,project:liveProject});
   },
   onExchange:(user,assistant)=>api('/live/history',{user,assistant,project:liveProject}),
+  onGrounding:sources=>renderWebReferences(sources),
   onToolResult:(name,result)=>{
     if(name==='remember_note'){refreshGraph().catch(error=>toast(error.message));}
     if(name==='set_reminder'){refreshWorkflows(false).catch(error=>toast(error.message));}
