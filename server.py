@@ -713,7 +713,7 @@ class App:
             question, re.I)
         if current_public:
             with self.lock:
-                if (bool(self._gemini_connection()[0])
+                if ((self.provider == 'gemini' or bool(self._gemini_connection()[0]))
                         and self.config.get('enable_google_search') is True
                         and self.config.get('allow_paid_models') is True):
                     result = self.web_search(question)
