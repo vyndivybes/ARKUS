@@ -61,7 +61,7 @@ class LiveAgentToolTests(unittest.TestCase):
         self.app.config["enable_live_mcp_readonly"] = True
         with patch("server.LiveTokenIssuer.create", return_value={"token": "fake-test-token", "model": "gemini-2.5-flash"}):
             result = self.app.live_token()
-        self.assertEqual(result["live_capabilities"], {"web_search": True, "mcp_readonly": True})
+        self.assertEqual(result["live_capabilities"], {"web_search": True, "native_google_search": False, "mcp_readonly": True})
         self.app.config["enable_google_search"] = False
         self.app._last_live_token_at = 0
         with patch("server.LiveTokenIssuer.create", return_value={"token": "fake-test-token", "model": "gemini-2.5-flash"}):
