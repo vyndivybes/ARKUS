@@ -43,11 +43,21 @@ asking for permission on every query. Set these values in **private** local
 }
 ```
 
-`enable_live_web_search` enables background public searches **only during an
-explicitly started Gemini Live session**. Never speak private credentials into a
-public search request. Google model availability, quotas and pricing depend on
-the account; the actual Gemini Live model must be verified separately. ARKUS
-returns grounded sources and does not fabricate web results on failure.
+`enable_live_web_search` and `enable_google_search` together enable **native
+Google Search grounding inside an explicitly started Gemini Live session**.
+Gemini Live uses the `{googleSearch:{}}` built-in tool alongside the currently
+approved local function declarations. It no longer routes Live questions through
+`/web/search` (`generateContent` grounding), which is unavailable on Gemini
+3.x Free-tier API projects and previously produced HTTP 429. Text-mode
+`/web/search` remains a separate endpoint and may still require a paid project.
+Do not speak private credentials into any search request. Live voice and camera
+remain opt-in. Google model availability, quota, and pricing vary by account.
+The viewer displays HTTPS sources **only** when the Live server actually returns
+`groundingMetadata.groundingChunks`; missing metadata must not be presented as
+verified citations. Google Live may omit grounding metadata in some responses,
+even when speech sounds confident. Native search plus function declarations
+must be verified with the user's Live model/account; model rejection must not
+be silently retried through a potentially billable standard Flash search.
 
 `enable_live_mcp_readonly` allows the voice assistant to discover and invoke
 **already configured** local MCP servers and owner-allowlisted tools that the
