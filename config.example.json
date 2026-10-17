@@ -13,5 +13,7 @@
   "gemini_api_key": "",
   "gemini_model": "gemini-2.5-flash",
   "vision_provider": "primary",
-  "live_model": "gemini-2.5-flash-native-audio-preview"
+  "live_model": "gemini-2.5-flash-native-audio-preview",
+  "enable_live_web_search": false,
+  "enable_live_mcp_readonly": false
 }
