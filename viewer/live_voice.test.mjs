@@ -20,7 +20,7 @@ test('setup binds exact model and speech-only modalities with no executable tool
   assert.deepEqual(setup.tools[1],{googleSearch:{}});
   assert.ok(!JSON.stringify(setup.tools).includes('search_web'));
   assert.ok(!JSON.stringify(setup.tools).includes('run_shell'));
-  assert.match(JSON.stringify(setup.tools),/owner has enabled Live web search/);
+  assert.match(setup.systemInstruction.parts[0].text,/native Google Search grounding/);
   assert.match(setup.systemInstruction.parts[0].text,/untrusted data/);
   assert.throws(()=>setupMessage('../wrong-model'));
 });
